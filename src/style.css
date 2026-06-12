@@ -1,0 +1,68 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #0b0f14;
+  --panel: rgba(16, 22, 30, 0.82);
+  --line: rgba(120, 200, 255, 0.25);
+  --accent: #36c2ff;
+  --good: #38d66b;
+  --warn: #ffcc33;
+  --bad: #ff5468;
+  --text: #e8f2fb;
+  --muted: #8aa0b4;
+}
+
+html, body { height: 100%; background: var(--bg); color: var(--text);
+  font-family: -apple-system, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
+  overflow: hidden; }
+
+#app { position: fixed; inset: 0; }
+
+#scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* 鏡頭小窗 */
+#cam-wrap { position: absolute; right: 16px; bottom: 16px; width: 240px; height: 180px;
+  border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+  background: #000; box-shadow: 0 6px 24px rgba(0,0,0,0.5); }
+#cam, #overlay { position: absolute; inset: 0; width: 100%; height: 100%;
+  transform: scaleX(-1); /* 鏡像顯示，像照鏡子 */ }
+#cam { object-fit: cover; }
+#cam-label { position: absolute; left: 8px; top: 6px; font-size: 10px; letter-spacing: 2px;
+  color: var(--muted); background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 4px; }
+
+/* HUD */
+#hud { position: absolute; left: 16px; top: 16px; width: 240px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px 16px; backdrop-filter: blur(8px); }
+.hud-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+.hud-key { width: 64px; font-size: 12px; color: var(--muted); flex: none; }
+.hud-val { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.bar { flex: 1; height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; }
+.bar-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.12s linear; }
+
+/* 視角切換 */
+#view-toggle { position: absolute; right: 16px; top: 16px; display: flex; gap: 6px; }
+#view-toggle button { background: var(--panel); color: var(--muted); border: 1px solid var(--line);
+  padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+#view-toggle button.active { color: var(--text); border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+
+/* 啟動遮罩 */
+#start-overlay { position: absolute; inset: 0; background: rgba(6,9,13,0.92);
+  display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); z-index: 10; }
+.start-card { width: 480px; max-width: 90vw; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 16px; padding: 28px 32px; }
+.start-card h1 { font-size: 28px; letter-spacing: 1px; }
+.start-card .sub { color: var(--muted); margin: 4px 0 18px; }
+.howto { list-style: none; margin: 0 0 16px; }
+.howto li { font-size: 14px; color: var(--text); padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.howto b { color: var(--accent); }
+.note { font-size: 12px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+#btn-start { width: 100%; padding: 14px; font-size: 16px; font-weight: 600; cursor: pointer;
+  background: var(--accent); color: #021018; border: none; border-radius: 10px; }
+#btn-start:hover { filter: brightness(1.08); }
+.kbd { font-size: 12px; color: var(--muted); text-align: center; margin-top: 12px; }
+.err { color: var(--bad); font-size: 13px; text-align: center; margin-top: 10px; min-height: 18px; }
+
+.cmd-stop { color: var(--bad) !important; }
+.cmd-go { color: var(--good) !important; }
+.cmd-turn { color: var(--warn) !important; }

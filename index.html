@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aircraft Marshaller — M0 雛形</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="app">
+    <canvas id="scene"></canvas>
+
+    <!-- 鏡頭預覽（右下角小窗，含骨架疊圖） -->
+    <div id="cam-wrap">
+      <video id="cam" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <div id="cam-label">CAMERA</div>
+    </div>
+
+    <!-- HUD -->
+    <div id="hud">
+      <div class="hud-row">
+        <span class="hud-key">追蹤</span>
+        <span id="hud-track" class="hud-val">—</span>
+      </div>
+      <div class="hud-row">
+        <span class="hud-key">手勢</span>
+        <span id="hud-gesture" class="hud-val">—</span>
+      </div>
+      <div class="hud-row">
+        <span class="hud-key">信心</span>
+        <div class="bar"><div id="hud-conf" class="bar-fill"></div></div>
+      </div>
+      <div class="hud-row">
+        <span class="hud-key">指令</span>
+        <span id="hud-command" class="hud-val">IDLE</span>
+      </div>
+      <div class="hud-row">
+        <span class="hud-key">距停止線</span>
+        <span id="hud-dist" class="hud-val">—</span>
+      </div>
+      <div class="hud-row">
+        <span class="hud-key">中心線偏移</span>
+        <span id="hud-offset" class="hud-val">—</span>
+      </div>
+      <div class="hud-row">
+        <span class="hud-key">速度</span>
+        <span id="hud-speed" class="hud-val">0.0</span>
+      </div>
+    </div>
+
+    <!-- 視角切換 -->
+    <div id="view-toggle">
+      <button id="btn-tpv" class="active">第三人稱</button>
+      <button id="btn-fpv">第一人稱</button>
+    </div>
+
+    <!-- 啟動遮罩 -->
+    <div id="start-overlay">
+      <div class="start-card">
+        <h1>Aircraft Marshaller</h1>
+        <p class="sub">M0 雛形 — 用手勢指揮飛機</p>
+        <ul class="howto">
+          <li><b>前進</b>：雙手舉到頭前、上下招手（come ahead）</li>
+          <li><b>左轉</b>：右臂側平舉當軸，左手向上招手（飛機左轉）</li>
+          <li><b>右轉</b>：左臂側平舉當軸，右手向上招手</li>
+          <li><b>減速</b>：雙臂下伸、向外張開上下拍</li>
+          <li><b>停止</b>：雙臂上舉、於頭頂交叉</li>
+        </ul>
+        <p class="note">手勢依 ICAO 標準機坪信號簡化。影像僅在本機處理，不會上傳或儲存。請站到上半身與雙臂可入鏡的位置。</p>
+        <button id="btn-start">允許鏡頭並開始</button>
+        <p class="kbd">無鏡頭？可用鍵盤測試：W 前進 / A 左 / D 右 / Q 減速 / S 停止</p>
+        <p id="start-error" class="err"></p>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
