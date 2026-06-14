@@ -2,12 +2,14 @@
 // 提供第三人稱(TPV)與第一人稱(FPV)兩種相機。
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { STOP_LINE_Z, TAXIWAY_Z } from './aircraft.js';
 import { GESTURES } from './gesture.js';
 
-// 放一個授權合規的 GLB 到 public/ 並把檔名填在這裡，即會自動換成真實 3D 模型；
-// 留空則使用內建程序化 787 模型。模型機鼻請朝 -Z。
-const AIRCRAFT_MODEL_FILE = '';
+// 真實 3D 模型（放在 public/ 下）；留空則使用內建程序化 787。
+// 模型："Boeing 787-8" by rocket0314 (Sketchfab) — CC-BY-4.0
+const AIRCRAFT_MODEL_FILE = 'models/787/scene.gltf';
+const AIRCRAFT_MODEL_YAW = 0; // 繞 Y 旋轉使機鼻朝 -Z（載入後依畫面微調）
 
 export class GameScene {
   constructor(canvas) {
@@ -17,6 +19,9 @@ export class GameScene {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x8fc1e6); // 明亮白天天空
     this.scene.fog = new THREE.Fog(0xbcd9ee, 260, 560);
+    // 環境貼圖：讓金屬材質(GLTF 機身)有反射，否則會渲染成全黑
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
     this.view = 'TPV';
     this._buildCameras();
@@ -29,7 +34,7 @@ export class GameScene {
 
     // 若有提供外部 GLB 模型則載入替換程序化機體
     if (AIRCRAFT_MODEL_FILE) {
-      this.setAircraftModel(import.meta.env.BASE_URL + AIRCRAFT_MODEL_FILE);
+      this.setAircraftModel(import.meta.env.BASE_URL + AIRCRAFT_MODEL_FILE, AIRCRAFT_MODEL_YAW);
     }
 
     this.resize();
@@ -338,44 +343,69 @@ export class GameScene {
     return g;
   }
 
-  // 載入外部 GLB 飛機模型，替換程序化機體（自動置中、貼地、縮放到合理大小）。
-  setAircraftModel(url) {
+  // 載入外部 GLB/glTF 飛機模型，替換程序化機體（旋轉定向、置中、貼地、縮放）。
+  setAircraftModel(url, yaw = 0) {
     new GLTFLoader().load(
       url,
       (gltf) => {
+        const holder = new THREE.Group();
+        holder.add(gltf.scene);
+        holder.rotation.y = yaw;
+        holder.updateMatrixWorld(true);
+        // 這類 Sketchfab 模型常把跑道/地面/建物一起打包 → 移除過大的場景網格，只留飛機
+        const full = new THREE.Vector3();
+        new THREE.Box3().setFromObject(holder).getSize(full);
+        const limit = 0.45 * Math.max(full.x, full.z);
+        const sceneryRemoved = [];
+        holder.traverse((o) => {
+          if (o.isMesh) {
+            const s = new THREE.Vector3();
+            new THREE.Box3().setFromObject(o).getSize(s);
+            if (Math.max(s.x, s.y, s.z) > limit) sceneryRemoved.push(o);
+          }
+        });
+        sceneryRemoved.forEach((o) => o.parent && o.parent.remove(o));
+        holder.updateMatrixWorld(true);
+        // 量測 → 縮放到機身長約 44 單位
+        const size = new THREE.Vector3();
+        new THREE.Box3().setFromObject(holder).getSize(size);
+        const len = Math.max(size.x, size.z) || 1;
+        holder.scale.setScalar(44 / len);
+        holder.updateMatrixWorld(true);
+        // 置中(x,z) + 起落架貼地(y)
+        const box2 = new THREE.Box3().setFromObject(holder);
+        const c = new THREE.Vector3();
+        box2.getCenter(c);
+        holder.position.set(-c.x, -box2.min.y, -c.z);
+
+        // 換掉程序化機體
         while (this.aircraftGroup.children.length) {
           this.aircraftGroup.remove(this.aircraftGroup.children[0]);
         }
-        const m = gltf.scene;
-        const box = new THREE.Box3().setFromObject(m);
-        const size = new THREE.Vector3();
-        box.getSize(size);
-        const len = Math.max(size.x, size.z) || 1;
-        m.scale.setScalar(44 / len); // 機身長約 44 單位
-        const box2 = new THREE.Box3().setFromObject(m);
-        const c = new THREE.Vector3();
-        box2.getCenter(c);
-        m.position.x -= c.x;
-        m.position.z -= c.z;
-        m.position.y -= box2.min.y; // 起落架貼地
-        this.aircraftGroup.add(m);
+        this.aircraftGroup.add(holder);
 
-        // 保留鼻輪轉向：優先沿用模型內的鼻輪節點，找不到則疊一組可轉向鼻輪
-        let nose = null;
-        m.traverse((o) => {
-          if (!nose && o.name && /nose|nlg|front/i.test(o.name) && /gear|wheel|strut/i.test(o.name)) nose = o;
-        });
-        if (nose) {
-          this.noseGear = nose;
-        } else {
-          const g = this._buildGear(2, 0.7);
-          g.position.set(0, 0, -13);
-          this.aircraftGroup.add(g);
-          this.noseGear = g;
+        // 保留鼻輪轉向：把模型內的鼻輪相關節點收進一個 pivot 一起繞垂直軸轉
+        this.noseGear = null;
+        try {
+          const frontParts = [];
+          holder.traverse((o) => {
+            if (o.name && /front/i.test(o.name) && /gear|wheel|hinge|strut|tire/i.test(o.name)) frontParts.push(o);
+          });
+          if (frontParts.length) {
+            const ctr = new THREE.Vector3();
+            new THREE.Box3().setFromObject(frontParts[0]).getCenter(ctr);
+            const pivot = new THREE.Group();
+            pivot.position.copy(holder.worldToLocal(ctr.clone()));
+            holder.add(pivot);
+            for (const p of frontParts) pivot.attach(p); // attach 會保留世界座標
+            this.noseGear = pivot;
+          }
+        } catch (e) {
+          console.warn('鼻輪 pivot 建立失敗：', e);
         }
       },
       undefined,
-      (err) => console.warn('飛機 GLB 載入失敗，沿用程序化模型：', err)
+      (err) => console.warn('飛機模型載入失敗，沿用程序化模型：', err)
     );
   }
 
