@@ -143,6 +143,7 @@ export class GameScene {
     const REF_LEN = 62.8; // 787 為基準
     this.typeMarks = {};
     this.typeStopZ = {};
+    this.typeAcross = {};
     const TYPES = [
       { key: 'ATR72', len: 27.2, track: 4.1 },
       { key: 'A320', len: 37.6, track: 7.6 },
@@ -156,6 +157,7 @@ export class GameScene {
       const z = STOP_LINE_Z + (t.len - REF_LEN) * SCALE; // 依真實長度按比例
       const across = t.track * SCALE + 1.2;              // 橫桿寬度依主輪距按比例
       this.typeStopZ[t.key] = z;
+      this.typeAcross[t.key] = across;
       this._addTypeStopBar(t.key, z, across, i % 2 === 0 ? 1 : -1);
     });
     this._highlightTypeMark('B787'); // 預設機型的停止線標紅(目前作用中)
@@ -460,6 +462,11 @@ export class GameScene {
     this._highlightTypeMark(key); // 對應機型停止橫桿標紅
     // 該機型的鼻輪停止位置(主迴圈會寫入 aircraft.stopRefZ)：飛機停在自己的機型停止線上
     this.activeStopZ = (this.typeStopZ && this.typeStopZ[key] != null) ? this.typeStopZ[key] : STOP_LINE_Z;
+    // 輪檔員站在「該機型停止線」的右方(玩家視角的右側=螢幕右側=-x；隨機型移動)
+    if (this.chockman) {
+      const ax = (this.typeAcross && this.typeAcross[key]) ? this.typeAcross[key] : 6;
+      this.chockman.position.set(-(ax / 2 + 1.6), 0, this.activeStopZ);
+    }
   }
 
   // 載入 glTF 飛機模型，替換現有機體（去場景、旋轉定向、置中、貼地、縮放）。
@@ -912,7 +919,10 @@ export class GameScene {
     this.chockman = ch.grp;
     this.chArmL = ch.armL;
     this.chArmR = ch.armR;
-    this.chockman.position.set(0, 0, STOP_LINE_Z + 11); // 置於機型停止橫桿群前方，避免站在標線上
+    // 初始置於 787 停止線右方(loadAircraft 會依作用機型重新定位)
+    const ax0 = (this.typeAcross && this.typeAcross.B787) ? this.typeAcross.B787 : 6;
+    const z0 = (this.typeStopZ && this.typeStopZ.B787 != null) ? this.typeStopZ.B787 : STOP_LINE_Z;
+    this.chockman.position.set(-(ax0 / 2 + 1.6), 0, z0);
     this.scene.add(this.chockman);
 
     // 兩位 Wing Walker：固定站在翼尖旋轉半徑的左右淨空邊界（不隨飛機移動）。
