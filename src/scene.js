@@ -461,7 +461,8 @@ export class GameScene {
     }
   }
 
-  // 偵測「會滾動的輪子」：低矮、小型、圓形(兩維相近、一維較薄=輪軸)的網格。
+  // 偵測「真正的輪胎」並標記為可滾動。嚴格條件，避免把整流罩/天線/艙門/圓盤誤判：
+  //  近圓形(兩大維接近) + 軸向薄 + 輪軸為水平(x 或 z，排除平放圓盤) + 非常貼地 + 小。
   _setupWheels(holder, targetLen) {
     this.wheels = [];
     try {
@@ -470,14 +471,18 @@ export class GameScene {
         o.geometry.computeBoundingBox();
         const ld = new THREE.Vector3(); o.geometry.boundingBox.getSize(ld);
         const dims = [['x', ld.x], ['y', ld.y], ['z', ld.z]].sort((a, b) => a[1] - b[1]);
-        if (dims[2][1] <= 0) return;
-        const round = dims[1][1] > 0.65 * dims[2][1] && dims[0][1] < 0.6 * dims[2][1];
-        if (!round) return;
+        const maxD = dims[2][1];
+        if (maxD <= 0) return;
+        const circular = dims[1][1] > 0.80 * maxD;        // 兩大維接近 = 圓
+        const thinAxle = dims[0][1] < 0.5 * maxD;          // 一維明顯薄 = 輪寬
+        const axleHorizontal = dims[0][0] !== 'y';         // 輪軸需水平(排除平放圓盤/標線)
+        if (!(circular && thinAxle && axleHorizontal)) return;
         const wb = new THREE.Box3().setFromObject(o);
         const ws = new THREE.Vector3(); wb.getSize(ws);
         const wc = new THREE.Vector3(); wb.getCenter(wc);
         const maxW = Math.max(ws.x, ws.y, ws.z);
-        if (wc.y < 0.22 * targetLen && maxW < 0.16 * targetLen) {
+        // 很貼地 + 小(排除較大的引擎風扇)
+        if (wc.y < 0.13 * targetLen && maxW < 0.07 * targetLen) {
           this.wheels.push({ mesh: o, axis: dims[0][0], radius: maxW / 2 || 0.5 });
         }
       });
