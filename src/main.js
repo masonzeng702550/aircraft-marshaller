@@ -22,7 +22,7 @@ const commandClass = {
 };
 
 const scene = new GameScene($('scene'));
-const aircraft = new Aircraft('NARROW');
+const aircraft = new Aircraft('WIDE'); // 787 為廣體機
 const gate = new StableGate(280);
 
 let tracker = null;

@@ -6,13 +6,13 @@ import { GESTURES } from './gesture.js';
 // 速度單位為 m/s。1 knot ≈ 0.514 m/s。
 export const KNOT = 0.514;
 export const STOP_LINE_Z = 8;
-export const TAXIWAY_Z = 55; // 垂直滑行道所在的 Z（飛機從這條線的左/右端進場）
-const ENTRY_X = 30; // 進場時距中心線的橫向距離
+export const TAXIWAY_Z = 80; // 垂直滑行道所在的 Z（飛機從這條線的左/右端、更遠處進場）
+const ENTRY_X = 50; // 進場時距中心線的橫向距離（更遠）
 // 轉彎/進入停機坪後的限速（真實作業約 5 knots 以下）
 const STAND_SPEED = 5 * KNOT;     // ≈ 2.57 m/s
-const STAND_ZONE_Z = TAXIWAY_Z - 6; // 越過此 Z 視為已進入導入弧/停機坪，須慢速
-// 機鼻距機身參考點(中心)的距離，用機鼻判定停止/距離，避免大模型衝過頭
-export const NOSE_OFFSET = 17.5;
+const STAND_ZONE_Z = TAXIWAY_Z - 8; // 越過此 Z 視為已進入導入弧/停機坪，須慢速
+// 機鼻距機身參考點(中心)的距離（787 比例），用機鼻判定停止/距離
+export const NOSE_OFFSET = 22;
 
 // 機型參數（通用/虛構塗裝）。maxSpeed = 滑行道直線最高速（約 12~15 kt）。
 // turnRate(rad/s) 取真實滑行轉彎半徑 R≈v/ω：窄體 ~21m、廣體 ~29m、區域機 ~17m。
@@ -96,10 +96,12 @@ export class Aircraft {
         targetSpeed = s.idle; // 無指令：維持低速滑行
     }
 
-    // 轉彎或已進入導入弧/停機坪 → 限速到 5 knots 以下（真實作業）
-    if (turning || this.z < STAND_ZONE_Z) {
-      targetSpeed = Math.min(targetSpeed, s.standSpeed);
-    }
+    // 漸進限速：越接近轉彎線（中心線 x=0）越慢，離得遠才能滑快一點
+    const distToTurnLine = Math.max(0, Math.abs(this.x) - 4);
+    let cap = Math.min(s.maxSpeed, s.standSpeed + distToTurnLine * 0.16);
+    // 轉彎或已進入導入弧/停機坪 → 直接限到 5 knots 以下（真實作業）
+    if (turning || this.z < STAND_ZONE_Z) cap = s.standSpeed;
+    targetSpeed = Math.min(targetSpeed, cap);
 
     // 加減速（朝 targetSpeed 逼近）
     if (this.speed < targetSpeed) {
@@ -122,8 +124,8 @@ export class Aircraft {
     if (this.noseZ() < STOP_LINE_Z - 1.5 && Math.abs(this.x) < 4) {
       this.crossedLine = true;
     }
-    // 開過頭/偏離場地 → 視為滑出，停住
-    if (this.noseZ() < -6 || Math.abs(this.x) > 46 || this.z > TAXIWAY_Z + 12) {
+    // 開過頭/偏離場地 → 視為滑出，停住（容許進場橫距 ENTRY_X=50 再多一些）
+    if (this.noseZ() < -6 || Math.abs(this.x) > 60 || this.z > TAXIWAY_Z + 12) {
       this.speed = 0;
       this.stopped = true;
       this.outOfBounds = true;
