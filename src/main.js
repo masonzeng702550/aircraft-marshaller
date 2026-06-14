@@ -22,7 +22,7 @@ const commandClass = {
 };
 
 const scene = new GameScene($('scene'));
-const aircraft = new Aircraft('WIDE'); // 787 為廣體機
+const aircraft = new Aircraft('B787'); // 預設 787
 const gate = new StableGate(280);
 
 let tracker = null;
@@ -42,6 +42,17 @@ $('btn-fpv').addEventListener('click', () => {
   $('btn-fpv').classList.add('active');
   $('btn-tpv').classList.remove('active');
 });
+
+// ── 機型選擇（787 / 777）──
+function selectModel(key, btn) {
+  aircraft.setType(key);
+  scene.loadAircraft(key);
+  aircraft.reset();
+  document.querySelectorAll('#model-toggle button').forEach((b) => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+$('btn-787').addEventListener('click', (e) => selectModel('B787', e.currentTarget));
+$('btn-777').addEventListener('click', (e) => selectModel('B777', e.currentTarget));
 
 // ── 鍵盤備援 ──
 const keyMap = {
@@ -118,13 +129,21 @@ function loop(now) {
   // 有骨架時化身關節即時跟隨玩家手臂；無鏡頭(鍵盤)時退回離散姿勢
   if (lm) scene.setMarshallerFromLandmarks(lm);
   else scene.setMarshallerPose(raw);
+  // 輪檔員依飛機位置示範「該做的手勢」，玩家照著做
+  const advice = aircraft.recommendedCommand();
+  scene.setChockmanPose(advice);
   scene.render();
-  updateHUD(raw, conf, command, tracked);
+  updateHUD(raw, conf, command, tracked, advice);
 
   requestAnimationFrame(loop);
 }
 
-function updateHUD(raw, conf, command, tracked) {
+function updateHUD(raw, conf, command, tracked, advice) {
+  const adviceEl = $('hud-advice');
+  if (adviceEl) {
+    adviceEl.textContent = advice === GESTURES.NONE ? '—' : gestureLabel[advice];
+    adviceEl.className = 'hud-val ' + (commandClass[advice] || '');
+  }
   const trackEl = $('hud-track');
   if (useKeyboard) {
     trackEl.textContent = '鍵盤模式';

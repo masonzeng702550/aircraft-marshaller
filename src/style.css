@@ -46,6 +46,11 @@ html, body { height: 100%; background: var(--bg); color: var(--text);
   padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; }
 #view-toggle button.active { color: var(--text); border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 
+#model-toggle { position: absolute; right: 16px; top: 60px; display: flex; gap: 6px; }
+#model-toggle button { background: var(--panel); color: var(--muted); border: 1px solid var(--line);
+  padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; }
+#model-toggle button.active { color: var(--text); border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+
 /* 啟動遮罩 */
 #start-overlay { position: absolute; inset: 0; background: rgba(6,9,13,0.92);
   display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); z-index: 10; }

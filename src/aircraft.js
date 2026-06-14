@@ -18,9 +18,10 @@ export const NOSE_OFFSET = 22;
 // turnRate(rad/s) 取真實滑行轉彎半徑 R≈v/ω：窄體 ~21m、廣體 ~29m、區域機 ~17m。
 // wingspan 取真實翼展(m)：窄體~A320 35.8、廣體~777 60、區域機~E-jet 26。
 export const AIRCRAFT_TYPES = {
-  NARROW: { label: '窄體', maxSpeed: 13 * KNOT, idle: 6 * KNOT, standSpeed: STAND_SPEED, accel: 1.8, brake: 2.6, turnRate: 0.12, wingspan: 36 },
-  WIDE: { label: '廣體', maxSpeed: 11 * KNOT, idle: 5 * KNOT, standSpeed: 4 * KNOT, accel: 1.2, brake: 1.8, turnRate: 0.07, wingspan: 60 },
-  REGIONAL: { label: '區域機', maxSpeed: 14 * KNOT, idle: 6 * KNOT, standSpeed: STAND_SPEED, accel: 2.0, brake: 3.0, turnRate: 0.15, wingspan: 26 },
+  // B787-9：長 63m、翼展 60m。turnRate 0.07 → R≈29m。
+  B787: { label: '787', maxSpeed: 11 * KNOT, idle: 5 * KNOT, standSpeed: 4 * KNOT, accel: 1.2, brake: 1.8, turnRate: 0.07, wingspan: 60 },
+  // B777-300ER：更長更大(74m/65m) → 轉彎半徑更大：turnRate 0.05 → R≈36m、整體更慢。
+  B777: { label: '777', maxSpeed: 10 * KNOT, idle: 4.5 * KNOT, standSpeed: 3.5 * KNOT, accel: 1.0, brake: 1.5, turnRate: 0.05, wingspan: 65 },
 };
 
 export class Aircraft {
@@ -140,5 +141,26 @@ export class Aircraft {
   // 距停止線（以機鼻為準，正 = 還沒到，負 = 越線）
   distanceToStopLine() {
     return this.noseZ() - STOP_LINE_Z;
+  }
+
+  // 輪檔員的「建議指揮」：依飛機目前位置/航向推算玩家此刻該做的手勢。
+  recommendedCommand() {
+    if (this.stopped) return GESTURES.NONE;
+    const d = this.distanceToStopLine();        // 機鼻距停止線
+    const off = this.centerlineOffset();        // |x|
+    const hErr = this.headingError();           // |heading|，0 = 對齊中心線(-Z)
+    const turnRadius = this.spec.standSpeed / this.spec.turnRate;
+
+    // 1) 航向仍未對齊（剛從側邊進場）→ 接近到約一個轉彎半徑才開始轉，否則先前進
+    if (hErr > 0.2) {
+      if (off > turnRadius * 0.9) return GESTURES.GO;
+      return this.heading > 0 ? GESTURES.TURN_RIGHT : GESTURES.TURN_LEFT;
+    }
+    // 2) 已大致對齊但仍偏離中心線 → 往中心線修正（飛機左=-X）
+    if (off > 1.2) return this.x > 0 ? GESTURES.TURN_LEFT : GESTURES.TURN_RIGHT;
+    // 3) 對齊且置中 → 依距停止線：遠則前進、近則減速、到線停止
+    if (d <= 1) return GESTURES.STOP;
+    if (d <= 8) return GESTURES.SLOW;
+    return GESTURES.GO;
   }
 }

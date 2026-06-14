@@ -6,10 +6,13 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { STOP_LINE_Z, TAXIWAY_Z } from './aircraft.js';
 import { GESTURES } from './gesture.js';
 
-// 真實 3D 模型（放在 public/ 下）；留空則使用內建程序化 787。
-// 模型："Boeing 787-8" by rocket0314 (Sketchfab) — CC-BY-4.0
-const AIRCRAFT_MODEL_FILE = 'models/787/scene.gltf';
-const AIRCRAFT_MODEL_YAW = 0; // 繞 Y 旋轉使機鼻朝 -Z（載入後依畫面微調）
+// 真實 glTF 機型（放在 public/ 下）。yaw 使機鼻朝 -Z；len 為縮放後機身長(單位)。
+// 模型授權 CC-BY-4.0："Boeing 787-8" by rocket0314、"Boeing 777-300ER" by hakai315 (Sketchfab)
+export const AIRCRAFT_MODELS = {
+  B787: { file: 'models/787/scene.gltf', yaw: Math.PI, len: 46, type: 'B787', label: '787' },
+  B777: { file: 'models/777/scene.gltf', yaw: -Math.PI / 2, len: 52, type: 'B777', label: '777' },
+};
+const DEFAULT_MODEL = 'B787';
 
 export class GameScene {
   constructor(canvas) {
@@ -32,10 +35,8 @@ export class GameScene {
     this.scene.add(this.aircraftGroup);
     this._buildNPCs();
 
-    // 若有提供外部 GLB 模型則載入替換程序化機體
-    if (AIRCRAFT_MODEL_FILE) {
-      this.setAircraftModel(import.meta.env.BASE_URL + AIRCRAFT_MODEL_FILE, AIRCRAFT_MODEL_YAW);
-    }
+    // 載入預設 glTF 機型
+    this.loadAircraft(DEFAULT_MODEL);
 
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -343,8 +344,14 @@ export class GameScene {
     return g;
   }
 
-  // 載入外部 GLB/glTF 飛機模型，替換程序化機體（旋轉定向、置中、貼地、縮放）。
-  setAircraftModel(url, yaw = 0) {
+  // 依機型 key 載入對應 glTF 模型
+  loadAircraft(key) {
+    const m = AIRCRAFT_MODELS[key];
+    if (m) this.setAircraftModel(import.meta.env.BASE_URL + m.file, m.yaw, m.len);
+  }
+
+  // 載入 glTF 飛機模型，替換現有機體（去場景、旋轉定向、置中、貼地、縮放）。
+  setAircraftModel(url, yaw = 0, targetLen = 46) {
     new GLTFLoader().load(
       url,
       (gltf) => {
@@ -356,21 +363,20 @@ export class GameScene {
         const full = new THREE.Vector3();
         new THREE.Box3().setFromObject(holder).getSize(full);
         const limit = 0.45 * Math.max(full.x, full.z);
-        const sceneryRemoved = [];
+        const remove = [];
         holder.traverse((o) => {
           if (o.isMesh) {
             const s = new THREE.Vector3();
             new THREE.Box3().setFromObject(o).getSize(s);
-            if (Math.max(s.x, s.y, s.z) > limit) sceneryRemoved.push(o);
+            if (Math.max(s.x, s.y, s.z) > limit) remove.push(o);
           }
         });
-        sceneryRemoved.forEach((o) => o.parent && o.parent.remove(o));
+        remove.forEach((o) => o.parent && o.parent.remove(o));
         holder.updateMatrixWorld(true);
-        // 量測 → 縮放到機身長約 44 單位
+        // 量測 → 縮放到指定機身長
         const size = new THREE.Vector3();
         new THREE.Box3().setFromObject(holder).getSize(size);
-        const len = Math.max(size.x, size.z) || 1;
-        holder.scale.setScalar(44 / len);
+        holder.scale.setScalar(targetLen / (Math.max(size.x, size.z) || 1));
         holder.updateMatrixWorld(true);
         // 置中(x,z) + 起落架貼地(y)
         const box2 = new THREE.Box3().setFromObject(holder);
@@ -378,35 +384,41 @@ export class GameScene {
         box2.getCenter(c);
         holder.position.set(-c.x, -box2.min.y, -c.z);
 
-        // 換掉程序化機體
+        // 換掉現有機體
         while (this.aircraftGroup.children.length) {
           this.aircraftGroup.remove(this.aircraftGroup.children[0]);
         }
         this.aircraftGroup.add(holder);
-
-        // 保留鼻輪轉向：把模型內的鼻輪相關節點收進一個 pivot 一起繞垂直軸轉
-        this.noseGear = null;
-        try {
-          const frontParts = [];
-          holder.traverse((o) => {
-            if (o.name && /front/i.test(o.name) && /gear|wheel|hinge|strut|tire/i.test(o.name)) frontParts.push(o);
-          });
-          if (frontParts.length) {
-            const ctr = new THREE.Vector3();
-            new THREE.Box3().setFromObject(frontParts[0]).getCenter(ctr);
-            const pivot = new THREE.Group();
-            pivot.position.copy(holder.worldToLocal(ctr.clone()));
-            holder.add(pivot);
-            for (const p of frontParts) pivot.attach(p); // attach 會保留世界座標
-            this.noseGear = pivot;
-          }
-        } catch (e) {
-          console.warn('鼻輪 pivot 建立失敗：', e);
-        }
+        this._setupNoseSteer(holder);
       },
       undefined,
-      (err) => console.warn('飛機模型載入失敗，沿用程序化模型：', err)
+      (err) => console.warn('飛機模型載入失敗：', err)
     );
+  }
+
+  // 把鼻輪「輪/柱」節點收進一個位於其垂直軸的 pivot，使轉向時原地打角（不沿弧線跑）。
+  _setupNoseSteer(holder) {
+    this.noseGear = null;
+    try {
+      const parts = [];
+      holder.traverse((o) => {
+        if (o.isMesh && o.name && /front|nose|nlg/i.test(o.name) &&
+            /wheel|tire|strut|gear/i.test(o.name) && !/door|hinge|light/i.test(o.name)) {
+          parts.push(o);
+        }
+      });
+      if (!parts.length) return;
+      const bb = new THREE.Box3();
+      parts.forEach((p) => bb.expandByObject(p));
+      const ctr = bb.getCenter(new THREE.Vector3());      // 鼻輪群中心(世界座標)
+      const pivot = new THREE.Group();
+      pivot.position.copy(holder.worldToLocal(ctr.clone())); // 垂直轉向軸位置
+      holder.add(pivot);
+      parts.forEach((p) => pivot.attach(p));               // attach 保留世界座標 → 繞此軸原地轉
+      this.noseGear = pivot;
+    } catch (e) {
+      console.warn('鼻輪轉向設定失敗：', e);
+    }
   }
 
   // 錐削板（root 弦長→tip 弦長、半展長 span），用於尾翼/安定面，回傳幾何(在 XY 平面)
@@ -524,15 +536,15 @@ export class GameScene {
     return shoulder;
   }
 
-  // 帶手臂的 marshaller 化身
-  _buildMarshaller(color) {
+  // 帶關節手臂的人形：回傳 { grp, armL, armR }
+  _buildArmsFigure(color) {
     const grp = this._personMarker(color);
-    this.armL = this._makeArm();
-    this.armR = this._makeArm();
-    this.armL.position.set(-0.38, 1.55, 0);
-    this.armR.position.set(0.38, 1.55, 0);
-    grp.add(this.armL, this.armR);
-    return grp;
+    const armL = this._makeArm();
+    const armR = this._makeArm();
+    armL.position.set(-0.38, 1.55, 0);
+    armR.position.set(0.38, 1.55, 0);
+    grp.add(armL, armR);
+    return { grp, armL, armR };
   }
 
   // 設定單手姿勢：肩(sx 繞X、sz 繞Z)、肘(ex 繞X 彎曲)
@@ -571,9 +583,8 @@ export class GameScene {
     return cur + (t - cur) * k;
   }
 
-  // 依手勢擺出化身手臂姿勢（含肘關節）。第三人稱看背面，左右已鏡射。
-  setMarshallerPose(gesture) {
-    const L = this.armL, R = this.armR;
+  // 依手勢擺一對手臂姿勢（含肘關節）。第三人稱看背面，左右已鏡射。
+  _poseArms(L, R, gesture) {
     if (!L || !R) return;
     const UP = -2.3, BECKON = 1.5; // 上臂上舉前伸 + 前臂折起招手
     switch (gesture) {
@@ -603,15 +614,31 @@ export class GameScene {
     }
   }
 
+  // 玩家化身依手勢擺姿（鍵盤備援用）
+  setMarshallerPose(gesture) {
+    this._poseArms(this.armL, this.armR, gesture);
+  }
+
+  // 輪檔員（前方輔助指揮）依「建議手勢」擺姿，讓玩家照著做
+  setChockmanPose(gesture) {
+    this._poseArms(this.chArmL, this.chArmR, gesture);
+  }
+
   _buildNPCs() {
     // Marshaller（玩家化身）站在停止線前方更遠處、面向來機(+Z)，讓駕駛清楚看見
-    this.marshaller = this._buildMarshaller(0xffcc33);
+    const ma = this._buildArmsFigure(0xffcc33);
+    this.marshaller = ma.grp;
+    this.armL = ma.armL;
+    this.armR = ma.armR;
     this.marshaller.position.set(0, 0, -8);
     this.scene.add(this.marshaller);
 
-    // Chockman 在停止線旁
-    this.chockman = this._personMarker(0x38d66b);
-    this.chockman.position.set(4, 0, STOP_LINE_Z);
+    // Chockman（前方輔助指揮）：有關節手臂、站在中心線上面向來機，依飛機位置示範該做的手勢
+    const ch = this._buildArmsFigure(0x38d66b);
+    this.chockman = ch.grp;
+    this.chArmL = ch.armL;
+    this.chArmR = ch.armR;
+    this.chockman.position.set(0, 0, STOP_LINE_Z + 3);
     this.scene.add(this.chockman);
 
     // 兩位 Wing Walker：固定站在翼尖旋轉半徑的左右淨空邊界（不隨飛機移動），
