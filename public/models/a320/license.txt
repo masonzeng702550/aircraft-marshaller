@@ -1,0 +1,11 @@
+Model Information:
+* title:	Airbus A320-200
+* source:	https://sketchfab.com/3d-models/airbus-a320-200-02470bf974e645f78f5d9385a333e9e0
+* author:	Dlourine (https://sketchfab.com/fDlruosne)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Airbus A320-200" (https://sketchfab.com/3d-models/airbus-a320-200-02470bf974e645f78f5d9385a333e9e0) by Dlourine (https://sketchfab.com/fDlruosne) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
