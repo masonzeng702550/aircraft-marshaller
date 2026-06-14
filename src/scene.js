@@ -411,7 +411,7 @@ export class GameScene {
         // 計算鼻輪 pivot 會用到舊矩陣，導致轉向軸算錯、鼻輪沿大弧線飄走。
         this.aircraftGroup.updateMatrixWorld(true);
         this._setupNoseSteer(holder, targetLen);
-        this._setupWheels(holder, targetLen);
+        this._setupSpinners(holder, targetLen);
       },
       undefined,
       (err) => console.warn('飛機模型載入失敗：', err)
@@ -469,11 +469,15 @@ export class GameScene {
     }
   }
 
-  // 偵測「真正的輪胎」並標記為可滾動。嚴格條件，避免把整流罩/天線/艙門/圓盤誤判：
-  //  近圓形(兩大維接近) + 軸向薄 + 輪軸為水平(x 或 z，排除平放圓盤) + 非常貼地 + 小。
-  _setupWheels(holder, targetLen) {
+  // 偵測會旋轉的零件：輪胎(隨地速滾) 與 引擎扇葉(隨引擎轉速)。
+  // 圓形判定：兩大維接近 + 一維薄(=軸) + 軸為水平(排除平放圓盤/標線)。
+  // 輪胎=小且貼地且「成群」(排除鼻輪附近的孤立小圓件)；扇葉=較大的圓盤。
+  _setupSpinners(holder, targetLen) {
     this.wheels = [];
+    this.fans = [];
     try {
+      holder.updateMatrixWorld(true);
+      const round = [];
       holder.traverse((o) => {
         if (!o.isMesh || !o.geometry) return;
         o.geometry.computeBoundingBox();
@@ -481,21 +485,25 @@ export class GameScene {
         const dims = [['x', ld.x], ['y', ld.y], ['z', ld.z]].sort((a, b) => a[1] - b[1]);
         const maxD = dims[2][1];
         if (maxD <= 0) return;
-        const circular = dims[1][1] > 0.80 * maxD;        // 兩大維接近 = 圓
-        const thinAxle = dims[0][1] < 0.5 * maxD;          // 一維明顯薄 = 輪寬
-        const axleHorizontal = dims[0][0] !== 'y';         // 輪軸需水平(排除平放圓盤/標線)
-        if (!(circular && thinAxle && axleHorizontal)) return;
+        if (!(dims[1][1] > 0.8 * maxD && dims[0][1] < 0.5 * maxD && dims[0][0] !== 'y')) return;
         const wb = new THREE.Box3().setFromObject(o);
         const ws = new THREE.Vector3(); wb.getSize(ws);
         const wc = new THREE.Vector3(); wb.getCenter(wc);
         const maxW = Math.max(ws.x, ws.y, ws.z);
-        // 很貼地 + 小(排除較大的引擎風扇)
-        if (wc.y < 0.13 * targetLen && maxW < 0.07 * targetLen) {
-          this.wheels.push({ mesh: o, axis: dims[0][0], radius: maxW / 2 || 0.5 });
-        }
+        round.push({ mesh: o, axis: dims[0][0], radius: maxW / 2 || 0.5, maxW, x: wc.x, y: wc.y, z: wc.z });
       });
+      // 引擎扇葉：較大的圓盤(明顯比輪胎大；777 的 GE90 風扇更大)
+      for (const r of round) {
+        if (r.maxW > 0.06 * targetLen && r.maxW < 0.32 * targetLen && r.y < 0.2 * targetLen) this.fans.push(r);
+      }
+      // 輪胎：小、貼地，且附近還有其他同類(成群)→ 排除孤立的小圓件
+      const small = round.filter((r) => r.maxW <= 0.06 * targetLen && r.y < 0.12 * targetLen);
+      for (const r of small) {
+        const near = small.filter((s) => Math.abs(s.x - r.x) < 3.5 && Math.abs(s.z - r.z) < 3.5).length;
+        if (near >= 2) this.wheels.push(r);
+      }
     } catch (e) {
-      console.warn('輪子偵測失敗：', e);
+      console.warn('旋轉件偵測失敗：', e);
     }
   }
 
@@ -751,11 +759,18 @@ export class GameScene {
     this._steer = (this._steer || 0) + (steerTarget - (this._steer || 0)) * 0.15;
     if (this.noseGear) this.noseGear.rotation.y = this._steer;
 
-    // 輪子滾動：依速度繞各自輪軸旋轉（dt 約 1/60）
+    // 輪子滾動：依地速繞各自輪軸旋轉（dt 約 1/60）
     if (this.wheels && this.wheels.length && ac.speed > 0.001) {
       for (const w of this.wheels) {
         w.mesh.rotation[w.axis] += (ac.speed / 60) / w.radius;
       }
+    }
+
+    // 引擎扇葉：運轉中持續高速旋轉；停妥(關車)後轉速慢慢衰減到停。
+    const rpmTarget = ac.stopped ? 0 : 1;
+    this.engineRPM = (this.engineRPM ?? 1) + (rpmTarget - (this.engineRPM ?? 1)) * 0.012;
+    if (this.fans && this.engineRPM > 0.002) {
+      for (const f of this.fans) f.mesh.rotation[f.axis] += this.engineRPM * 0.5;
     }
   }
 

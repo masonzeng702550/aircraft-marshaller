@@ -2,6 +2,7 @@ import { PoseTracker } from './pose.js';
 import { classifyPose, StableGate, GESTURES } from './gesture.js';
 import { Aircraft } from './aircraft.js';
 import { GameScene } from './scene.js';
+import { EngineAudio } from './engineAudio.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -24,6 +25,7 @@ const commandClass = {
 const scene = new GameScene($('scene'));
 const aircraft = new Aircraft('B787'); // 預設 787
 const gate = new StableGate(280);
+const engineAudio = new EngineAudio();
 
 let tracker = null;
 let useKeyboard = false;
@@ -80,6 +82,7 @@ function withTimeout(promise, ms, label) {
 // ── 啟動 ──
 $('btn-start').addEventListener('click', async () => {
   const btn = $('btn-start');
+  engineAudio.start(); // 使用者手勢內啟用音訊
   $('start-error').textContent = '';
   btn.disabled = true;
   btn.textContent = '載入模型中…';
@@ -132,6 +135,7 @@ function loop(now) {
   // 輪檔員依飛機位置示範「該做的手勢」，玩家照著做
   const advice = aircraft.recommendedCommand();
   scene.setChockmanPose(advice);
+  engineAudio.setRPM(scene.engineRPM ?? 1, aircraft.speed); // 引擎聲隨轉速(關車 spool-down)
   scene.render();
   updateHUD(raw, conf, command, tracked, advice);
 
