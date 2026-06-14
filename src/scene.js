@@ -535,30 +535,40 @@ export class GameScene {
     return maxD > 0 && dims[1][1] > 0.8 * maxD && dims[0][1] < 0.5 * maxD && dims[0][0] !== 'y';
   }
 
-  // 偵測可滾動的輪胎：圓形 + 貼地 + 非極小 + 成群且取起落架最底層(=真正輪胎)
+  // 偵測可滾動的輪胎：圓形 + 貼地 + 非極小 + 成群且取起落架最底層(=真正輪胎)。
+  // 每顆輪胎包進「以輪心為樞軸」的 pivot 再自轉 → 保證原地滾動(不繞偏心原點亂甩，修 777 主輪)。
   _setupWheels(holder, targetLen) {
     this.wheels = [];
     try {
       holder.updateMatrixWorld(true);
+      const underNose = (o) => { for (let p = o.parent; p; p = p.parent) if (p === this.noseGear) return true; return false; };
       const round = [];
       holder.traverse((o) => {
         if (!this._isWheelShape(o)) return;
-        o.geometry.computeBoundingBox();
-        const ld = new THREE.Vector3(); o.geometry.boundingBox.getSize(ld);
-        const dims = [['x', ld.x], ['y', ld.y], ['z', ld.z]].sort((a, b) => a[1] - b[1]);
+        if (this.noseGear && underNose(o)) return; // 鼻輪由轉向 pivot 處理，避免重複/反父化衝突
         const wb = new THREE.Box3().setFromObject(o);
         const ws = new THREE.Vector3(); wb.getSize(ws);
         const wc = new THREE.Vector3(); wb.getCenter(wc);
         const maxW = Math.max(ws.x, ws.y, ws.z);
-        round.push({ mesh: o, axis: dims[0][0], radius: maxW / 2 || 0.5, maxW, x: wc.x, y: wc.y, z: wc.z });
+        round.push({ mesh: o, radius: maxW / 2 || 0.5, maxW, x: wc.x, y: wc.y, z: wc.z, c: wc });
       });
       const small = round.filter((r) =>
         r.maxW <= 0.06 * targetLen && r.maxW > 0.005 * targetLen && r.y < 0.12 * targetLen);
       const grouped = small.filter((r) =>
         small.filter((s) => Math.abs(s.x - r.x) < 3.5 && Math.abs(s.z - r.z) < 3.5).length >= 2);
+      let selected = [];
       if (grouped.length) {
         const minY = Math.min(...grouped.map((r) => r.y));
-        this.wheels = grouped.filter((r) => r.y < minY + 0.7);
+        selected = grouped.filter((r) => r.y < minY + 0.7);
+      }
+      // 為每顆輪胎在「輪心」建立 pivot，反父化後繞樞軸自轉 → 純粹原地滾動
+      for (const r of selected) {
+        const pivot = new THREE.Group();
+        pivot.position.copy(holder.worldToLocal(r.c.clone()));
+        holder.add(pivot);
+        pivot.updateMatrixWorld(true);
+        pivot.attach(r.mesh);
+        this.wheels.push({ pivot, radius: r.radius });
       }
     } catch (e) {
       console.warn('輪子偵測失敗：', e);
@@ -817,13 +827,12 @@ export class GameScene {
     // 視覺與運動同源 → 鼻輪打多少、飛機就照那個弧度轉,不再像在飄移。
     if (this.noseGear) this.noseGear.rotation.y = ac.steerAngle ?? 0;
 
-    // 輪子滾動：全部繞「機身橫向(輪軸)世界軸」統一滾動。
-    // 不用各輪自己的局部薄軸(不同輪局部座標不一致 → 會各轉各的、看起來亂轉)。
+    // 輪子滾動：每顆輪的 pivot(位於輪心)繞「機身橫向(輪軸)世界軸」自轉 → 原地滾動。
     // 機身橫向世界向量 = 機身局部 +X 經 heading 旋轉 = (cos h, 0, -sin h)；
     // 由滾動無滑動 ω = -(v/r)·lateral 推得方向(機頭朝 -Z 前進時輪子正向滾)。
     if (this.wheels && this.wheels.length && ac.speed > 0.001) {
       const lateral = new THREE.Vector3(Math.cos(ac.heading), 0, -Math.sin(ac.heading));
-      for (const w of this.wheels) w.mesh.rotateOnWorldAxis(lateral, -(ac.speed / 60) / w.radius);
+      for (const w of this.wheels) w.pivot.rotateOnWorldAxis(lateral, -(ac.speed / 60) / w.radius);
     }
 
     // 引擎轉速比例(供引擎聲)：運轉中=1，停妥關車後慢慢衰減到 0(spool-down)。
