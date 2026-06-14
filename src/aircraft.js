@@ -6,8 +6,9 @@ import { GESTURES } from './gesture.js';
 // 速度單位為 m/s。1 knot ≈ 0.514 m/s。
 export const KNOT = 0.514;
 export const STOP_LINE_Z = 8;
-export const TAXIWAY_Z = 80; // 垂直滑行道所在的 Z（飛機從這條線的左/右端、更遠處進場）
-const ENTRY_X = 50; // 進場時距中心線的橫向距離（更遠）
+// 停機坪放大到可容納 747(長~76m/翼展~68m)：更寬、更深
+export const TAXIWAY_Z = 118; // 垂直滑行道所在的 Z（飛機從這條線的左/右端、更遠處進場）
+const ENTRY_X = 68; // 進場時距中心線的橫向距離（更寬）
 // 轉彎/進入停機坪後的限速（真實作業約 5 knots 以下）
 const STAND_SPEED = 5 * KNOT;     // ≈ 2.57 m/s
 const STAND_ZONE_Z = TAXIWAY_Z - 8; // 越過此 Z 視為已進入導入弧/停機坪，須慢速
@@ -125,8 +126,8 @@ export class Aircraft {
     if (this.noseZ() < STOP_LINE_Z - 1.5 && Math.abs(this.x) < 4) {
       this.crossedLine = true;
     }
-    // 開過頭/偏離場地 → 視為滑出，停住（容許進場橫距 ENTRY_X=50 再多一些）
-    if (this.noseZ() < -6 || Math.abs(this.x) > 60 || this.z > TAXIWAY_Z + 12) {
+    // 開過頭/偏離場地 → 視為滑出，停住（容許進場橫距 ENTRY_X 再多一些）
+    if (this.noseZ() < -6 || Math.abs(this.x) > 82 || this.z > TAXIWAY_Z + 14) {
       this.speed = 0;
       this.stopped = true;
       this.outOfBounds = true;

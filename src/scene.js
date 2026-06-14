@@ -24,7 +24,7 @@ export class GameScene {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x8fc1e6); // 明亮白天天空
-    this.scene.fog = new THREE.Fog(0xbcd9ee, 260, 560);
+    this.scene.fog = new THREE.Fog(0xbcd9ee, 340, 720);
     // 環境貼圖：讓金屬材質(GLTF 機身)有反射，否則會渲染成全黑
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -49,13 +49,13 @@ export class GameScene {
     const aspect = window.innerWidth / window.innerHeight;
     // 第三人稱：站在飛機正前方（marshaller 身後上方），看得到自己的化身指揮、
     // 也看得到飛機沿垂直滑行道從側邊滑入
-    this.tpv = new THREE.PerspectiveCamera(72, aspect, 0.1, 600);
-    this.tpv.position.set(0, 9, -20);
-    this.tpv.lookAt(0, 2, 28);
+    this.tpv = new THREE.PerspectiveCamera(74, aspect, 0.1, 900);
+    this.tpv.position.set(0, 10, -15);
+    this.tpv.lookAt(0, 2.5, 40);
     // 第一人稱：marshaller 視角（站位 z=-8），面向來機(+Z)
-    this.fpv = new THREE.PerspectiveCamera(74, aspect, 0.1, 500);
+    this.fpv = new THREE.PerspectiveCamera(76, aspect, 0.1, 900);
     this.fpv.position.set(0, 3.2, -8);
-    this.fpv.lookAt(0, 3, 50);
+    this.fpv.lookAt(0, 3, 60);
     this.camera = this.tpv;
   }
 
@@ -83,13 +83,13 @@ export class GameScene {
     grass.position.set(0, -0.05, 60);
     this.scene.add(grass);
 
-    // 停機坪混凝土（淺灰）
+    // 停機坪混凝土（淺灰）— 放大到可容納 747
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(170, 250),
+      new THREE.PlaneGeometry(300, 360),
       new THREE.MeshStandardMaterial({ color: 0x9aa1a8, roughness: 1 })
     );
     ground.rotation.x = -Math.PI / 2;
-    ground.position.z = 30;
+    ground.position.z = 45;
     this.scene.add(ground);
 
     const lineMat = new THREE.MeshBasicMaterial({ color: 0xf2d250 });
@@ -109,19 +109,19 @@ export class GameScene {
 
     // 垂直滑行道：瀝青帶 + 黃色實線中心線（飛機從這條滑行道的左/右端進場）
     const asphalt = new THREE.Mesh(
-      new THREE.PlaneGeometry(150, 16),
+      new THREE.PlaneGeometry(260, 24),
       new THREE.MeshStandardMaterial({ color: 0x3c4147, roughness: 1 })
     );
     asphalt.rotation.x = -Math.PI / 2;
     asphalt.position.set(0, 0.005, TAXIWAY_Z);
     this.scene.add(asphalt);
-    const taxiCenter = new THREE.Mesh(new THREE.PlaneGeometry(150, 0.5), lineMat);
+    const taxiCenter = new THREE.Mesh(new THREE.PlaneGeometry(260, 0.5), lineMat);
     taxiCenter.rotation.x = -Math.PI / 2;
     taxiCenter.position.set(0, 0.02, TAXIWAY_Z);
     this.scene.add(taxiCenter);
 
     // Turn bar（轉彎橫桿）：標示開始轉彎處，垂直於導入線、位於導入弧銜接點
-    const turnBar = new THREE.Mesh(new THREE.PlaneGeometry(7, 0.7), lineMat);
+    const turnBar = new THREE.Mesh(new THREE.PlaneGeometry(12, 0.8), lineMat);
     turnBar.rotation.x = -Math.PI / 2;
     turnBar.position.set(0, 0.025, JUNCTION_Z);
     this.scene.add(turnBar);
@@ -134,7 +134,7 @@ export class GameScene {
 
     // 停止線（橫向紅線，最醒目）
     const stopMat = new THREE.MeshBasicMaterial({ color: 0xff5468 });
-    const stopBar = new THREE.Mesh(new THREE.PlaneGeometry(16, 0.7), stopMat);
+    const stopBar = new THREE.Mesh(new THREE.PlaneGeometry(28, 0.9), stopMat);
     stopBar.rotation.x = -Math.PI / 2;
     stopBar.position.set(0, 0.03, STOP_LINE_Z);
     this.scene.add(stopBar);
@@ -197,6 +197,35 @@ export class GameScene {
       this.scene.add(d);
     }
 
+    // 遠景城市公寓群（像松山機場背後的市區）
+    const cityMats = [0xb9b3ac, 0xa9a39c, 0xc4bdb4, 0x9fa6ad].map(
+      (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.95 }));
+    for (let i = 0; i < 48; i++) {
+      const w = 8 + ((i * 17) % 12);
+      const h = 14 + ((i * 53) % 30);
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, 9), cityMats[i % cityMats.length]);
+      b.position.set(-280 + i * 12, h / 2, 270 + ((i * 29) % 22));
+      this.scene.add(b);
+    }
+
+    // 遠山（綠色山脈，前後兩層，呈現照片中城市背後的山）
+    const near = new THREE.MeshStandardMaterial({ color: 0x4f6b43, roughness: 1 });
+    const far = new THREE.MeshStandardMaterial({ color: 0x7d92a6, roughness: 1, fog: true });
+    for (let i = 0; i < 14; i++) {
+      const r = 55 + ((i * 23) % 45);
+      const hgt = 55 + ((i * 37) % 55);
+      const m = new THREE.Mesh(new THREE.ConeGeometry(r, hgt, 7), far);
+      m.position.set(-330 + i * 52, hgt / 2 - 8, 400 + ((i * 31) % 30));
+      this.scene.add(m);
+    }
+    for (let i = 0; i < 13; i++) {
+      const r = 50 + ((i * 19) % 38);
+      const hgt = 40 + ((i * 41) % 40);
+      const m = new THREE.Mesh(new THREE.ConeGeometry(r, hgt, 7), near);
+      m.position.set(-300 + i * 50, hgt / 2 - 6, 340 + ((i * 17) % 22));
+      this.scene.add(m);
+    }
+
     // 機棚（遠方兩座）
     const hangarMat = new THREE.MeshStandardMaterial({ color: 0xb7bdc4, roughness: 0.85 });
     for (const hx of [-120, 130]) {
@@ -243,7 +272,7 @@ export class GameScene {
   _addLeadInCurve(side, junctionZ, mat) {
     const y = 0.06;
     const curve = new THREE.QuadraticBezierCurve3(
-      new THREE.Vector3(side * 18, y, TAXIWAY_Z), // 起點：滑行道上
+      new THREE.Vector3(side * 28, y, TAXIWAY_Z), // 起點：滑行道上
       new THREE.Vector3(0, y, TAXIWAY_Z),         // 控制點：使起點切線水平、終點切線垂直
       new THREE.Vector3(0, y, junctionZ)          // 終點：銜接中心線
     );
@@ -752,9 +781,9 @@ export class GameScene {
     this.chockman.position.set(0, 0, STOP_LINE_Z + 3);
     this.scene.add(this.chockman);
 
-    // 兩位 Wing Walker：固定站在翼尖旋轉半徑的左右淨空邊界（不隨飛機移動），
-    // 守住機翼掃掠區，防止人車進入。CLEAR ≈ 787 半翼展 ~21 + 安全裕度。
-    const CLEAR = 26;
+    // 兩位 Wing Walker：固定站在翼尖旋轉半徑的左右淨空邊界（不隨飛機移動）。
+    // CLEAR 放大到可容納 747 半翼展(~34 單位) + 安全裕度。
+    const CLEAR = 42;
     const guardZ = (TAXIWAY_Z - 14 + STOP_LINE_Z) / 2; // 停機坪中段
     this.wingL = this._personMarker(0xff8a3d);
     this.wingR = this._personMarker(0xff8a3d);
