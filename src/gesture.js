@@ -57,8 +57,11 @@ export function classifyPose(lm) {
   const lUp = up(lw), rUp = up(rw);
   const lHoriz = horiz(lw, lOut), rHoriz = horiz(rw, rOut);
 
-  // ── STOP：雙臂上舉過頭（頭頂交叉的最終姿勢）──
-  if (lwAboveHead && rwAboveHead) {
+  // ── STOP：雙臂上舉過頭「且交叉成 X」才算停止 ──
+  // 一般站姿左手腕在影像右(x 較大)、右手腕在左；交叉時會對調(lw.x < rw.x)。
+  // 僅雙手舉高、未交叉，不算停止。
+  const crossedX = lw.x < rw.x - shoulderW * 0.05;
+  if (lwAboveHead && rwAboveHead && crossedX) {
     return { gesture: GESTURES.STOP, confidence: 0.95 };
   }
 
