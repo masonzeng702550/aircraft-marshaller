@@ -97,10 +97,11 @@ export class GameScene {
     // 中心引導線（lead-in line）：從停止線一路向上到導入弧銜接點。
     // 轉彎後留長距離可以慢慢對齊（參考標準停機位標線）。
     const JUNCTION_Z = TAXIWAY_Z - 14;          // 導入弧與直線中心線的銜接點
-    const straightLen = JUNCTION_Z - STOP_LINE_Z;
-    const centerline = new THREE.Mesh(new THREE.PlaneGeometry(0.2, straightLen + 4), lineMat); // 線寬≈0.28m(真實導入線 15cm 級)
+    const NEAR_Z = -1;                           // 中央線近端(延伸到最近一條停止線之前)
+    const straightLen = JUNCTION_Z - NEAR_Z;
+    const centerline = new THREE.Mesh(new THREE.PlaneGeometry(0.2, straightLen), lineMat); // 線寬≈0.28m(真實導入線 15cm 級)
     centerline.rotation.x = -Math.PI / 2;
-    centerline.position.set(0, 0.02, STOP_LINE_Z + straightLen / 2);
+    centerline.position.set(0, 0.02, (NEAR_Z + JUNCTION_Z) / 2);
     this.scene.add(centerline);
 
     // 彎曲導入線（轉彎輔助線）：自滑行道兩側平滑彎入中心線，左右各一條（漏斗狀）。
@@ -129,66 +130,54 @@ export class GameScene {
     // Alignment bar（對位桿）：與飛機停妥時的延伸中心線重合，停止前供駕駛對準
     const alignBar = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 4), lineMat);
     alignBar.rotation.x = -Math.PI / 2;
-    alignBar.position.set(0, 0.025, STOP_LINE_Z - 5);
+    alignBar.position.set(0, 0.025, -3); // 置於最近停止線之前供對準
     this.scene.add(alignBar);
 
-    // 機型鼻輪停止線（依 ICAO Doc 9157 Pt4 機坪標線）：每個機型一條「黃色橫桿+黑邊」垂直於導入線，
-    // 旁邊標機型代號(黑底黃字)。各機型停止距離不同：機身越長、鼻輪停得越外側(距登機口越遠)，
-    // 依機身長度按比例排布；橫桿寬度也隨翼展略微比例化。787 對齊功能停止線(STOP_LINE_Z)。
-    // len=機身長(m)、span=翼展(m)。距離 z = STOP_LINE_Z + (len - 62.8)*0.16。
-    // 機型鼻輪停止橫桿：依「真實機身長度 × 場景比例尺(≈0.72 單位/公尺)」按比例排距。
-    // 機身越長、鼻輪停得越外側(+z，機身才放得進機坪)；787 對齊功能停止線(STOP_LINE_Z)。
-    // len=機身長(m)、span=翼展(m)、track=主輪距(m，決定橫桿寬度)。
-    const SCALE = 0.72; // 場景公尺→單位(787 模型 46 單位 / 62.8m)
-    const REF_LEN = 62.8; // 787 為基準
-    this.typeMarks = {};
+    // 機型鼻輪停止線：分四條(由近到遠)，相近長度的機型共用一條。全部黃色(同滑行道/中央線粗細)+黑色細外框。
+    // 機尾對齊共同後界(REAR_Z)，機身越長機鼻越往登機口(近端)靠 → 越長的飛機停止線越「近」、占用越長的停機位。
+    // 每條線左右兩端各標一個機型代號。z = REAR_Z − 代表機身長 × 比例尺(0.72 單位/公尺)。
+    const SCALE = 0.72;     // 場景公尺→單位(787 模型 46 單位 / 62.8m)
+    const REAR_Z = 53.86;   // 共同機尾後界，使 787/A330 那條落在 STOP_LINE_Z(=8)
+    const ACROSS = 8;       // 橫線跨距(供左右兩端標牌)
     this.typeStopZ = {};
     this.typeAcross = {};
-    const TYPES = [
-      { key: 'ATR72', len: 27.2, track: 4.1 },
-      { key: 'A320', len: 37.6, track: 7.6 },
-      { key: 'B737', len: 39.5, track: 5.7 },
-      { key: 'B787', len: 62.8, track: 11.0 },
-      { key: 'A330', len: 63.7, track: 10.7 },
-      { key: 'A350', len: 66.8, track: 10.7 },
-      { key: 'B777', len: 73.9, track: 12.9 },
+    const ROWS = [          // 由近(長)到遠(短)
+      { left: 'B777', right: 'A350', repLen: 73.9 },
+      { left: 'B787', right: 'A330', repLen: 63.7 },
+      { left: 'B737', right: 'A320', repLen: 39.5 },
+      { right: 'ATR72', repLen: 27.2 },
     ];
-    TYPES.forEach((t, i) => {
-      const z = STOP_LINE_Z + (t.len - REF_LEN) * SCALE; // 依真實長度按比例
-      const across = t.track * SCALE + 1.2;              // 橫桿寬度依主輪距按比例
-      this.typeStopZ[t.key] = z;
-      this.typeAcross[t.key] = across;
-      this._addTypeStopBar(t.key, z, across, i % 2 === 0 ? 1 : -1);
-    });
-    this._highlightTypeMark('B787'); // 預設機型的停止線標紅(目前作用中)
+    for (const r of ROWS) {
+      const z = REAR_Z - r.repLen * SCALE;
+      this._addStopLine(z, ACROSS);
+      // 玩家視角(過肩望向 +z)：螢幕左 = +x、螢幕右 = -x
+      if (r.left) { this.typeStopZ[r.left] = z; this.typeAcross[r.left] = ACROSS; this._addTypeLabel(r.left, ACROSS / 2 + 1.6, z); }
+      if (r.right) { this.typeStopZ[r.right] = z; this.typeAcross[r.right] = ACROSS; this._addTypeLabel(r.right, -(ACROSS / 2 + 1.6), z); }
+    }
 
-    // 機位編號（停止點附近，置於最內側機型停止線之前）
-    this._addStandLabel('A9', STOP_LINE_Z + (27.2 - REF_LEN) * 0.72 - 5);
+    // 機位編號（置於最近一條停止線之前）
+    this._addStandLabel('A9', (REAR_Z - 73.9 * SCALE) - 6);
   }
 
-  // 單條機型鼻輪停止橫桿：黑邊黃桿(垂直導入線) + 側邊機型代號標牌(黑底黃字)。
-  // side=+1/-1：標牌交錯置於左右兩端，避免相鄰標牌重疊。
-  _addTypeStopBar(key, z, across, side = 1) {
+  // 單條鼻輪停止線：黃色橫線(同滑行道/中央線粗細 0.2) + 黑色細外框
+  _addStopLine(z, across) {
     const outline = new THREE.Mesh(
-      new THREE.PlaneGeometry(across + 0.32, 0.95),
+      new THREE.PlaneGeometry(across + 0.16, 0.36),
       new THREE.MeshBasicMaterial({ color: 0x14160f })
     );
     outline.rotation.x = -Math.PI / 2;
     outline.position.set(0, 0.028, z);
     this.scene.add(outline);
     const bar = new THREE.Mesh(
-      new THREE.PlaneGeometry(across, 0.62), // 寬度≈0.9m(真實鼻輪停止橫桿)
+      new THREE.PlaneGeometry(across, 0.2), // 與滑行道線/中央線同粗細
       new THREE.MeshBasicMaterial({ color: 0xf2d250 })
     );
     bar.rotation.x = -Math.PI / 2;
     bar.position.set(0, 0.032, z);
     this.scene.add(bar);
-    this.typeMarks[key] = bar;
-    // 機型代號標牌(黑底黃字)，交錯置於橫桿左右端外側
-    this._addTypeLabel(key, side * (across / 2 + 1.6), z);
   }
 
-  // 機型代號標牌：黑底圓角 + 黃字（ICAO 規定黃字黑底）
+  // 機型代號標牌：黑底 + 黃字（ICAO 規定黃字黑底）
   _addTypeLabel(text, x, z) {
     const canvas = document.createElement('canvas');
     canvas.width = 256; canvas.height = 96;
@@ -202,21 +191,13 @@ export class GameScene {
     ctx.fillText(text, 128, 50);
     const tex = new THREE.CanvasTexture(canvas);
     const mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.5, 0.95), // 縮到接近真實標牌尺寸
+      new THREE.PlaneGeometry(2.5, 0.95),
       new THREE.MeshBasicMaterial({ map: tex, transparent: true })
     );
     mesh.rotation.x = -Math.PI / 2;
     mesh.rotation.z = Math.PI; // 文字正面朝第三人稱(自後方看 +Z)
     mesh.position.set(x, 0.033, z);
     this.scene.add(mesh);
-  }
-
-  // 標示目前作用中機型的停止橫桿(紅)、其餘回黃
-  _highlightTypeMark(key) {
-    if (!this.typeMarks) return;
-    for (const [k, bar] of Object.entries(this.typeMarks)) {
-      bar.material.color.set(k === key ? 0xff5468 : 0xf2d250);
-    }
   }
 
   // 背景：白天機場（航廈、空橋、滑行道/跑道、機棚、塔台、雲）
@@ -459,7 +440,6 @@ export class GameScene {
       this.noseSteerMax = (m.steerDeg || 34) * Math.PI / 180; // 鼻輪最大轉向角
       this.setAircraftModel(import.meta.env.BASE_URL + m.file, m.yaw, m.len, m.sceneryRatio);
     }
-    this._highlightTypeMark(key); // 對應機型停止橫桿標紅
     // 該機型的鼻輪停止位置(主迴圈會寫入 aircraft.stopRefZ)：飛機停在自己的機型停止線上
     this.activeStopZ = (this.typeStopZ && this.typeStopZ[key] != null) ? this.typeStopZ[key] : STOP_LINE_Z;
     // 輪檔員站在「該機型停止線」的右方(玩家視角的右側=螢幕右側=-x；隨機型移動)
