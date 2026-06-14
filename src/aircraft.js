@@ -21,10 +21,10 @@ export const NOSE_OFFSET = 22;
 // steerDeg = 鼻輪最大打角(度)；wheelbase = 鼻輪到主輪的軸距(遊戲單位)。
 // wingspan 取真實翼展(m)：廣體~777 60。
 export const AIRCRAFT_TYPES = {
-  // B787-9：長 63m、翼展 60m。鼻輪最大 70°、軸距~24 → 最小迴轉半徑 R≈24/tan70°≈8.7m。
-  B787: { label: '787', maxSpeed: 11 * KNOT, idle: 5 * KNOT, standSpeed: 4 * KNOT, accel: 1.2, brake: 1.8, steerDeg: 70, wheelbase: 24, wingspan: 60 },
-  // B777-300ER：更長更大(74m/65m)、軸距~31 → 鼻輪最大 75°、R≈31/tan75°≈8.3m。
-  B777: { label: '777', maxSpeed: 10 * KNOT, idle: 4.5 * KNOT, standSpeed: 3.5 * KNOT, accel: 1.0, brake: 1.5, steerDeg: 75, wheelbase: 31, wingspan: 65 },
+  // B787-9：長 63m、翼展 60m。鼻輪最大 40°、軸距~24 → 迴轉半徑 R≈24/tan40°≈29m(平緩圓弧、有慣性)。
+  B787: { label: '787', maxSpeed: 11 * KNOT, idle: 5 * KNOT, standSpeed: 4 * KNOT, accel: 1.2, brake: 1.8, steerDeg: 40, wheelbase: 24, wingspan: 60 },
+  // B777-300ER：更長更大(74m/65m)、軸距~31 → 鼻輪最大 34°、R≈31/tan34°≈46m(更大更平緩的圓弧)。
+  B777: { label: '777', maxSpeed: 10 * KNOT, idle: 4.5 * KNOT, standSpeed: 3.5 * KNOT, accel: 1.0, brake: 1.5, steerDeg: 34, wheelbase: 31, wingspan: 65 },
 };
 
 export class Aircraft {
@@ -132,8 +132,8 @@ export class Aircraft {
       this.speed = Math.max(targetSpeed, this.speed - decel * dt);
     }
 
-    // 鼻輪打角平滑趨近目標(避免瞬間跳到 70°)
-    this.steerAngle += (steerTarget - this.steerAngle) * Math.min(1, dt * 6);
+    // 鼻輪打角「緩慢」趨近目標(時間常數~0.4s)：轉向有慣性、緩緩切入/退出 → 平滑圓弧、不會瞬間反應
+    this.steerAngle += (steerTarget - this.steerAngle) * Math.min(1, dt * 2.5);
     // 自行車模型：航向變化率 = 地速 · tan(鼻輪角) / 軸距。
     // 路徑曲率由鼻輪角決定 → 視覺鼻輪角與實際轉彎一致(不再像定速旋轉的「飄移」)。
     this.heading += this.speed * Math.tan(this.steerAngle) / s.wheelbase * dt;
