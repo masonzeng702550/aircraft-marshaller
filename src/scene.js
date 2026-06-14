@@ -1,8 +1,13 @@
 // Three.js 場景：機坪、中心線、停止線、飛機（積木組合）、NPC 占位、空橋占位。
 // 提供第三人稱(TPV)與第一人稱(FPV)兩種相機。
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { STOP_LINE_Z, TAXIWAY_Z } from './aircraft.js';
 import { GESTURES } from './gesture.js';
+
+// 放一個授權合規的 GLB 到 public/ 並把檔名填在這裡，即會自動換成真實 3D 模型；
+// 留空則使用內建程序化 787 模型。模型機鼻請朝 -Z。
+const AIRCRAFT_MODEL_FILE = '';
 
 export class GameScene {
   constructor(canvas) {
@@ -10,8 +15,8 @@ export class GameScene {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0b0f14);
-    this.scene.fog = new THREE.Fog(0x0b0f14, 150, 340);
+    this.scene.background = new THREE.Color(0x8fc1e6); // 明亮白天天空
+    this.scene.fog = new THREE.Fog(0xbcd9ee, 260, 560);
 
     this.view = 'TPV';
     this._buildCameras();
@@ -21,6 +26,11 @@ export class GameScene {
     this.aircraftGroup = this._buildAircraft();
     this.scene.add(this.aircraftGroup);
     this._buildNPCs();
+
+    // 若有提供外部 GLB 模型則載入替換程序化機體
+    if (AIRCRAFT_MODEL_FILE) {
+      this.setAircraftModel(import.meta.env.BASE_URL + AIRCRAFT_MODEL_FILE);
+    }
 
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -46,16 +56,28 @@ export class GameScene {
   }
 
   _buildLights() {
-    this.scene.add(new THREE.HemisphereLight(0x9fc4e0, 0x223040, 0.9));
-    const dir = new THREE.DirectionalLight(0xffffff, 1.0);
-    dir.position.set(20, 40, 10);
-    this.scene.add(dir);
+    // 白天：明亮天空光 + 太陽平行光
+    this.scene.add(new THREE.HemisphereLight(0xdff0ff, 0x6b7a66, 1.1));
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+    const sun = new THREE.DirectionalLight(0xfff6e6, 1.5);
+    sun.position.set(40, 70, 30);
+    this.scene.add(sun);
   }
 
   _buildApron() {
+    // 草地（最底層，向四周延伸）
+    const grass = new THREE.Mesh(
+      new THREE.PlaneGeometry(1400, 1400),
+      new THREE.MeshStandardMaterial({ color: 0x6f9a55, roughness: 1 })
+    );
+    grass.rotation.x = -Math.PI / 2;
+    grass.position.set(0, -0.05, 60);
+    this.scene.add(grass);
+
+    // 停機坪混凝土（淺灰）
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(160, 240),
-      new THREE.MeshStandardMaterial({ color: 0x1a232c, roughness: 1 })
+      new THREE.PlaneGeometry(170, 250),
+      new THREE.MeshStandardMaterial({ color: 0x9aa1a8, roughness: 1 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.z = 30;
@@ -76,14 +98,18 @@ export class GameScene {
     this._addLeadInCurve(-1, JUNCTION_Z, lineMat); // 左側進場用
     this._addLeadInCurve(+1, JUNCTION_Z, lineMat); // 右側進場用
 
-    // 垂直滑行道（橫向白虛線，飛機從這條線的左/右端進場）
-    const taxiMat = new THREE.MeshBasicMaterial({ color: 0xbcd0e0 });
-    for (let x = -56; x <= 56; x += 6) {
-      const dash = new THREE.Mesh(new THREE.PlaneGeometry(3, 0.5), taxiMat);
-      dash.rotation.x = -Math.PI / 2;
-      dash.position.set(x, 0.02, TAXIWAY_Z);
-      this.scene.add(dash);
-    }
+    // 垂直滑行道：瀝青帶 + 黃色實線中心線（飛機從這條滑行道的左/右端進場）
+    const asphalt = new THREE.Mesh(
+      new THREE.PlaneGeometry(150, 16),
+      new THREE.MeshStandardMaterial({ color: 0x3c4147, roughness: 1 })
+    );
+    asphalt.rotation.x = -Math.PI / 2;
+    asphalt.position.set(0, 0.005, TAXIWAY_Z);
+    this.scene.add(asphalt);
+    const taxiCenter = new THREE.Mesh(new THREE.PlaneGeometry(150, 0.5), lineMat);
+    taxiCenter.rotation.x = -Math.PI / 2;
+    taxiCenter.position.set(0, 0.02, TAXIWAY_Z);
+    this.scene.add(taxiCenter);
 
     // Turn bar（轉彎橫桿）：標示開始轉彎處，垂直於導入線、位於導入弧銜接點
     const turnBar = new THREE.Mesh(new THREE.PlaneGeometry(7, 0.7), lineMat);
@@ -108,33 +134,26 @@ export class GameScene {
     this._addStandLabel('A9', STOP_LINE_Z - 9);
   }
 
-  // 背景：航廈、空橋、燈柱、遠景天際線（夜間機坪）
+  // 背景：白天機場（航廈、空橋、滑行道/跑道、機棚、塔台、雲）
   _buildBackground() {
-    const glassMat = new THREE.MeshStandardMaterial({ color: 0x1a2a3a, roughness: 0.3, metalness: 0.2, emissive: 0x14202c });
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0x2b333d, roughness: 0.9 });
-    const litMat = new THREE.MeshStandardMaterial({ color: 0xffe39a, emissive: 0xffce6a, emissiveIntensity: 0.6 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x7fa8c9, roughness: 0.2, metalness: 0.4 });
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xc9cfd6, roughness: 0.8 });
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, roughness: 0.9 });
 
-    // 航廈主體（在停止線後方，飛機機鼻朝向它）
+    // 航廈主體（停止線後方，飛機機鼻朝向它）
     const terminal = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(120, 14, 16), wallMat);
-    body.position.set(0, 7, -28);
+    const body = new THREE.Mesh(new THREE.BoxGeometry(130, 15, 20), wallMat);
+    body.position.set(0, 7.5, -30);
     terminal.add(body);
-    const glass = new THREE.Mesh(new THREE.BoxGeometry(118, 8, 0.5), glassMat);
-    glass.position.set(0, 7, -20);
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(128, 9, 0.5), glassMat);
+    glass.position.set(0, 8, -20);
     terminal.add(glass);
-    // 航廈窗格亮點
-    for (let x = -54; x <= 54; x += 6) {
-      const w = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.2, 0.6), litMat);
-      w.position.set(x, 8.5, -19.7);
-      terminal.add(w);
-    }
-    // 屋頂女兒牆
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(122, 1.5, 18), wallMat);
-    roof.position.set(0, 14.5, -28);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(134, 1.6, 22), roofMat);
+    roof.position.set(0, 15.5, -30);
     terminal.add(roof);
     this.scene.add(terminal);
 
-    // 空橋：自航廈(後方)架高、斜向伸到飛機左側機門位置（位於 -X，畫面右側）
+    // 空橋：自航廈架高、斜向伸到飛機左側機門（位於 -X，畫面右側）
     this.jetbridge = new THREE.Group();
     const rotunda = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 5, 12), wallMat);
     rotunda.position.set(-22, 3.5, 0);
@@ -146,48 +165,69 @@ export class GameScene {
     const cab = new THREE.Mesh(new THREE.BoxGeometry(2.8, 2.6, 2.4), wallMat);
     cab.position.set(-6, 4.2, 22);
     this.jetbridge.add(cab);
-    for (const [cx, cz] of [[-20, 4], [-12, 13]]) { // 支撐柱
-      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 4, 8), wallMat);
+    for (const [cx, cz] of [[-20, 4], [-12, 13]]) {
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 4, 8), roofMat);
       col.position.set(cx, 2, cz);
       this.jetbridge.add(col);
     }
     this.scene.add(this.jetbridge);
 
+    // 跑道（遠方 +Z，沿 X 的長瀝青帶 + 白色中心虛線）
+    const runway = new THREE.Mesh(
+      new THREE.PlaneGeometry(600, 40),
+      new THREE.MeshStandardMaterial({ color: 0x44494f, roughness: 1 })
+    );
+    runway.rotation.x = -Math.PI / 2;
+    runway.position.set(0, -0.02, 200);
+    this.scene.add(runway);
+    const rwMark = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    for (let x = -260; x <= 260; x += 24) {
+      const d = new THREE.Mesh(new THREE.PlaneGeometry(12, 1), rwMark);
+      d.rotation.x = -Math.PI / 2;
+      d.position.set(x, 0.0, 200);
+      this.scene.add(d);
+    }
+
+    // 機棚（遠方兩座）
+    const hangarMat = new THREE.MeshStandardMaterial({ color: 0xb7bdc4, roughness: 0.85 });
+    for (const hx of [-120, 130]) {
+      const h = new THREE.Mesh(new THREE.BoxGeometry(70, 26, 50), hangarMat);
+      h.position.set(hx, 13, 150);
+      this.scene.add(h);
+      const hr = new THREE.Mesh(new THREE.CylinderGeometry(26, 26, 70, 16, 1, false, 0, Math.PI), hangarMat);
+      hr.rotation.z = Math.PI / 2;
+      hr.position.set(hx, 26, 150);
+      this.scene.add(hr);
+    }
+
+    // 塔台
+    const tower = new THREE.Mesh(new THREE.CylinderGeometry(2, 3, 40, 12), wallMat);
+    tower.position.set(70, 20, 120);
+    this.scene.add(tower);
+    const towerCab = new THREE.Mesh(new THREE.CylinderGeometry(5, 4, 5, 12), glassMat);
+    towerCab.position.set(70, 42, 120);
+    this.scene.add(towerCab);
+
     // 機坪照明燈柱
-    for (const [px, pz] of [[-40, 5], [40, 5], [-40, 50], [40, 50]]) {
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 16, 8), wallMat);
+    for (const [px, pz] of [[-44, 6], [44, 6], [-44, 52], [44, 52]]) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 16, 8), roofMat);
       pole.position.set(px, 8, pz);
       this.scene.add(pole);
-      const lamp = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.5, 1.2), litMat);
-      lamp.position.set(px + (px < 0 ? 1 : -1), 16, pz);
-      this.scene.add(lamp);
     }
 
-    // 遠景天際線（建築剪影 + 塔台）：位於滑行道後方遠處(+Z)，即遊玩視角看出去的地平線
-    const farMat = new THREE.MeshStandardMaterial({ color: 0x161d26 });
-    for (let i = 0; i < 26; i++) {
-      const w = 9 + ((i * 37) % 11);
-      const h = 14 + ((i * 53) % 26);
-      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, 7), farMat);
-      b.position.set(-180 + i * 14, h / 2, 205 + ((i * 29) % 26));
-      this.scene.add(b);
+    // 白雲（每朵由數個半透明球體疊成蓬鬆狀，散布高空）
+    const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, transparent: true, opacity: 0.9 });
+    for (const [cx, cy, cz, cs] of [[-90, 62, 240, 14], [70, 78, 300, 20], [-30, 92, 370, 26], [150, 66, 260, 16], [20, 104, 430, 30]]) {
+      const cloud = new THREE.Group();
+      for (const [ox, oy, or] of [[-cs, 0, cs * 0.8], [0, cs * 0.3, cs], [cs, 0, cs * 0.75], [cs * 0.4, -cs * 0.2, cs * 0.6]]) {
+        const puff = new THREE.Mesh(new THREE.SphereGeometry(or, 10, 8), cloudMat);
+        puff.position.set(ox, oy, 0);
+        puff.scale.y = 0.6;
+        cloud.add(puff);
+      }
+      cloud.position.set(cx, cy, cz);
+      this.scene.add(cloud);
     }
-    const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 2.2, 36, 10), farMat);
-    tower.position.set(-55, 18, 200);
-    this.scene.add(tower);
-    const towerTop = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 2.2, 4, 10), glassMat);
-    towerTop.position.set(-55, 37, 200);
-    this.scene.add(towerTop);
-
-    // 夜空星點（散布在 +Z 遠方高空）
-    const starGeo = new THREE.BufferGeometry();
-    const pts = [];
-    for (let i = 0; i < 240; i++) {
-      pts.push(-200 + ((i * 53) % 400), 50 + ((i * 13) % 110), 120 + ((i * 7) % 160));
-    }
-    starGeo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x9fb6c8, size: 0.9 }));
-    this.scene.add(stars);
   }
 
   // 彎曲導入線：自滑行道(side*18, TAXIWAY_Z) 平滑彎入中心線(0, junctionZ)
@@ -226,62 +266,62 @@ export class GameScene {
     this.scene.add(mesh);
   }
 
-  // Boeing 787-9 比例（長≈翼展、機身細長、斜削翼尖、鋸齒引擎噴口 chevron）。
-  // 機鼻 tip 在 local z=-22(=NOSE_OFFSET)。鼻輪可轉向(this.noseGear)。
+  // Boeing 787 程序化模型：平滑機身(LatheGeometry)、後掠錐削主翼+斜削翼尖、
+  // 引擎(短艙+派龍+chevron)、後掠尾翼、塗裝。機鼻 tip 在 local z=-22(=NOSE_OFFSET)。
   _buildAircraft() {
     const g = new THREE.Group();
+    this.aircraftBody = g; // 供 GLTF 載入時替換
     this._mat = {
-      white: new THREE.MeshStandardMaterial({ color: 0xeef2f6, roughness: 0.45 }),
-      navy: new THREE.MeshStandardMaterial({ color: 0x1b3a6b, roughness: 0.5 }),
-      metal: new THREE.MeshStandardMaterial({ color: 0xb7c0c8, roughness: 0.4, metalness: 0.3 }),
-      dark: new THREE.MeshStandardMaterial({ color: 0x222a32, roughness: 0.6 }),
-      wheel: new THREE.MeshStandardMaterial({ color: 0x111418, roughness: 0.8 }),
+      white: new THREE.MeshStandardMaterial({ color: 0xf3f6f9, roughness: 0.35, metalness: 0.05 }),
+      blue: new THREE.MeshStandardMaterial({ color: 0x2b5c9e, roughness: 0.4 }),
+      metal: new THREE.MeshStandardMaterial({ color: 0xc4ccd2, roughness: 0.35, metalness: 0.4 }),
+      dark: new THREE.MeshStandardMaterial({ color: 0x1c2228, roughness: 0.5 }),
+      wheel: new THREE.MeshStandardMaterial({ color: 0x14181c, roughness: 0.85 }),
     };
-    const R = 2.0;   // 機身半徑
-    const Y = 3.0;   // 機身中心高
+    const Y = 3.0; // 機身中心高
 
-    // 機身主體 + 機鼻 + 機尾（細長）
-    const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 36, 28), this._mat.white);
+    // 平滑機身（旋轉曲面）：半徑沿機身漸變，鼻尖 z=-22、機尾 z=+22
+    const prof = [
+      [0.05, -22], [0.55, -21], [1.05, -19.5], [1.5, -17.5], [1.85, -14],
+      [2.0, -9], [2.0, 2], [1.95, 9], [1.7, 14], [1.25, 18], [0.75, 20.5], [0.15, 22],
+    ].map(([r, p]) => new THREE.Vector2(r, p));
+    const fuselage = new THREE.Mesh(new THREE.LatheGeometry(prof, 32), this._mat.white);
     fuselage.rotation.x = Math.PI / 2;
     fuselage.position.y = Y;
     g.add(fuselage);
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(R, 4, 28), this._mat.white);
-    nose.rotation.x = -Math.PI / 2;
-    nose.position.set(0, Y, -20);
-    g.add(nose);
-    const tailCone = new THREE.Mesh(new THREE.ConeGeometry(R, 7, 28), this._mat.white);
-    tailCone.rotation.x = Math.PI / 2;
-    tailCone.position.set(0, Y + 0.6, 21.5); // 機尾略上翹
-    g.add(tailCone);
 
-    // 駕駛艙窗 + 側窗帶
-    const cockpit = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.1, 2.2), this._mat.dark);
-    cockpit.position.set(0, Y + 1.0, -16);
+    // 駕駛艙窗（機鼻上方深色弧塊）
+    const cockpit = new THREE.Mesh(new THREE.SphereGeometry(1.5, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2.2), this._mat.dark);
+    cockpit.scale.set(1, 0.5, 1.3);
+    cockpit.position.set(0, Y + 0.7, -16.5);
     g.add(cockpit);
-    const windowStripe = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, 30), this._mat.dark);
-    windowStripe.position.set(R - 0.02, Y + 0.5, 2);
-    g.add(windowStripe);
-    const windowStripe2 = windowStripe.clone();
-    windowStripe2.position.x = -(R - 0.02);
-    g.add(windowStripe2);
+    // 側窗帶 + 塗裝腰線（兩側）
+    for (const sx of [-1, 1]) {
+      const win = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5, 30), this._mat.dark);
+      win.position.set(sx * 1.95, Y + 0.45, 1);
+      g.add(win);
+      const cheat = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.5, 33), this._mat.blue);
+      cheat.position.set(sx * 1.95, Y - 0.25, 1);
+      g.add(cheat);
+    }
 
-    // 主翼（後掠 + 斜削翼尖）
+    // 主翼 + 引擎
     g.add(this._buildWing(-1, Y));
     g.add(this._buildWing(1, Y));
-
-    // 引擎（翼下，含鋸齒 chevron 噴口）
     g.add(this._buildEngine(-1, Y));
     g.add(this._buildEngine(1, Y));
 
-    // 尾翼：後掠垂直尾翼 + 水平安定面
-    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.5, 7, 5), this._mat.navy);
-    fin.position.set(0, Y + 4.2, 18.5);
-    fin.rotation.x = -0.32; // 後掠
+    // 尾翼：後掠垂直尾翼（藍，錐削）+ 水平安定面
+    const fin = new THREE.Mesh(this._taperPlate(7, 5.5, 2.6), this._mat.blue);
+    fin.rotation.x = Math.PI / 2;       // 立起
+    fin.rotation.y = Math.PI / 2;
+    fin.position.set(0, Y + 1.6, 18.5);
     g.add(fin);
     for (const s of [-1, 1]) {
-      const stab = new THREE.Mesh(new THREE.BoxGeometry(8, 0.35, 3), this._mat.navy);
-      stab.position.set(s * 4.5, Y + 1.4, 18.5);
-      stab.rotation.y = -s * 0.3;
+      const stab = new THREE.Mesh(this._taperPlate(7.5, 3, 1.6), this._mat.white);
+      stab.rotation.x = Math.PI / 2;
+      stab.scale.x = s;
+      stab.position.set(0, Y + 1.3, 18.5);
       g.add(stab);
     }
 
@@ -290,12 +330,51 @@ export class GameScene {
     this.noseGear.position.set(0, 0, -13);
     g.add(this.noseGear);
     for (const x of [-3.4, 3.4]) {
-      const main = this._buildGear(4, 0.75);
+      const main = this._buildGear(4, 0.78);
       main.position.set(x, 0, 5);
       g.add(main);
     }
 
     return g;
+  }
+
+  // 載入外部 GLB 飛機模型，替換程序化機體（自動置中、貼地、縮放到合理大小）。
+  setAircraftModel(url) {
+    new GLTFLoader().load(
+      url,
+      (gltf) => {
+        while (this.aircraftGroup.children.length) {
+          this.aircraftGroup.remove(this.aircraftGroup.children[0]);
+        }
+        this.noseGear = null; // 外部模型不做鼻輪轉向
+        const m = gltf.scene;
+        const box = new THREE.Box3().setFromObject(m);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const len = Math.max(size.x, size.z) || 1;
+        m.scale.setScalar(44 / len); // 機身長約 44 單位
+        const box2 = new THREE.Box3().setFromObject(m);
+        const c = new THREE.Vector3();
+        box2.getCenter(c);
+        m.position.x -= c.x;
+        m.position.z -= c.z;
+        m.position.y -= box2.min.y; // 起落架貼地
+        this.aircraftGroup.add(m);
+      },
+      undefined,
+      (err) => console.warn('飛機 GLB 載入失敗，沿用程序化模型：', err)
+    );
+  }
+
+  // 錐削板（root 弦長→tip 弦長、半展長 span），用於尾翼/安定面，回傳幾何(在 XY 平面)
+  _taperPlate(span, rootChord, tipChord) {
+    const s = new THREE.Shape();
+    s.moveTo(0, -rootChord / 2);
+    s.lineTo(span, -tipChord / 2 + span * 0.18); // 後掠
+    s.lineTo(span, tipChord / 2 + span * 0.18);
+    s.lineTo(0, rootChord / 2);
+    s.closePath();
+    return new THREE.ExtrudeGeometry(s, { depth: 0.4, bevelEnabled: false });
   }
 
   // 一組起落架（n 個輪、輪半徑 r），含簡單支柱
@@ -314,45 +393,50 @@ export class GameScene {
     return grp;
   }
 
-  // 後掠主翼 + 斜削上揚翼尖（787 特徵）
+  // 後掠錐削主翼 + 斜削翼尖（787 特徵），用 ExtrudeGeometry 做出梯形平面
   _buildWing(side, Y) {
     const grp = new THREE.Group();
-    const span = 17;
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(span, 0.4, 5.5), this._mat.white);
-    panel.position.set((side * span) / 2, 0, 0);
-    grp.add(panel);
-    const tip = new THREE.Mesh(new THREE.BoxGeometry(5, 0.35, 2.6), this._mat.navy);
-    tip.position.set(side * (span + 1.8), 0.5, 1.4); // 斜削翼尖：外移、後掠、上揚
-    tip.rotation.z = side * 0.5;
-    grp.add(tip);
-    grp.position.set(side * 1.9, Y - 0.4, 2);
-    grp.rotation.y = -side * 0.4; // 後掠
-    grp.rotation.z = side * 0.05; // 上反角
+    const shape = new THREE.Shape();
+    shape.moveTo(0, -3.0);            // 翼根前緣
+    shape.lineTo(side * 21, 5.8);     // 翼尖前緣（後掠、斜削）
+    shape.lineTo(side * 21, 7.4);     // 翼尖後緣（弦長變窄）
+    shape.lineTo(0, 3.2);             // 翼根後緣
+    shape.closePath();
+    const wing = new THREE.Mesh(
+      new THREE.ExtrudeGeometry(shape, { depth: 0.45, bevelEnabled: false }),
+      this._mat.white
+    );
+    wing.rotation.x = Math.PI / 2;    // 平放：shapeY → worldZ
+    grp.add(wing);
+    grp.position.set(side * 1.7, Y - 0.5, 1);
+    grp.rotation.z = side * 0.05;     // 上反角
     return grp;
   }
 
-  // 引擎短艙：進氣口 + 外殼 + 鋸齒 chevron 噴口
+  // 引擎：短艙 + 進氣唇口 + 風扇 + 鋸齒 chevron 噴口 + 派龍
   _buildEngine(side, Y) {
     const grp = new THREE.Group();
-    const cowl = new THREE.Mesh(new THREE.CylinderGeometry(1.35, 1.25, 5.5, 20), this._mat.metal);
+    const cowl = new THREE.Mesh(new THREE.CylinderGeometry(1.45, 1.3, 6, 24), this._mat.metal);
     cowl.rotation.x = Math.PI / 2;
     grp.add(cowl);
-    const inlet = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.18, 10, 20), this._mat.dark);
-    inlet.position.z = -2.7;
-    grp.add(inlet);
-    const fan = new THREE.Mesh(new THREE.CircleGeometry(1.15, 20), this._mat.dark);
-    fan.position.z = -2.6;
+    const lip = new THREE.Mesh(new THREE.TorusGeometry(1.42, 0.16, 12, 24), this._mat.white);
+    lip.position.z = -3;
+    grp.add(lip);
+    const fan = new THREE.Mesh(new THREE.CircleGeometry(1.28, 24), this._mat.dark);
+    fan.position.z = -2.9;
     grp.add(fan);
-    // 鋸齒 chevron：噴口後緣一圈小三角齒
-    const teeth = 12;
+    const teeth = 14;
     for (let i = 0; i < teeth; i++) {
       const a = (i / teeth) * Math.PI * 2;
-      const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.8, 4), this._mat.metal);
-      tooth.position.set(Math.cos(a) * 1.2, Math.sin(a) * 1.2, 2.9);
-      tooth.rotation.x = -Math.PI / 2; // 尖端朝後
+      const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.8, 4), this._mat.metal);
+      tooth.position.set(Math.cos(a) * 1.25, Math.sin(a) * 1.25, 3.1);
+      tooth.rotation.x = -Math.PI / 2;
       grp.add(tooth);
     }
-    grp.position.set(side * 7, Y - 1.9, -1);
+    const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.5, 2.4, 2.6), this._mat.metal);
+    pylon.position.set(0, 1.5, 0.6);
+    grp.add(pylon);
+    grp.position.set(side * 7.5, Y - 1.7, -1.5);
     return grp;
   }
 
