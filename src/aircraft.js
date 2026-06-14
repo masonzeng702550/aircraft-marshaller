@@ -147,8 +147,8 @@ export class Aircraft {
       this.speed = 0;
       this.stopped = true;
     }
-    // 越線（已對齊中心線卻讓機鼻衝過停止線）
-    if (this.noseZ() < STOP_LINE_Z - 1.5 && Math.abs(this.x) < 4) {
+    // 越線（已對齊中心線卻讓機鼻衝過該機型停止線）
+    if (this.noseZ() < this.stopLineZ() - 1.5 && Math.abs(this.x) < 4) {
       this.crossedLine = true;
     }
     // 開過頭/偏離場地 → 視為滑出，停住（容許進場橫距 ENTRY_X 再多一些）
@@ -181,9 +181,14 @@ export class Aircraft {
     return this.z - Math.cos(this.heading) * off;
   }
 
+  // 該機型的鼻輪停止線 Z（stopRefZ 由場景依機型設定；未取得時退回 STOP_LINE_Z）
+  stopLineZ() {
+    return this.stopRefZ ?? STOP_LINE_Z;
+  }
+
   // 距停止線（以鼻輪為準，正 = 還沒到，負 = 越線）
   distanceToStopLine() {
-    return this.noseZ() - STOP_LINE_Z;
+    return this.noseZ() - this.stopLineZ();
   }
 
   // 輪檔員的「建議指揮」：依飛機目前位置/航向推算玩家此刻該做的手勢。

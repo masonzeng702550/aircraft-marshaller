@@ -98,7 +98,7 @@ export class GameScene {
     // 轉彎後留長距離可以慢慢對齊（參考標準停機位標線）。
     const JUNCTION_Z = TAXIWAY_Z - 14;          // 導入弧與直線中心線的銜接點
     const straightLen = JUNCTION_Z - STOP_LINE_Z;
-    const centerline = new THREE.Mesh(new THREE.PlaneGeometry(0.5, straightLen + 4), lineMat);
+    const centerline = new THREE.Mesh(new THREE.PlaneGeometry(0.2, straightLen + 4), lineMat); // 線寬≈0.28m(真實導入線 15cm 級)
     centerline.rotation.x = -Math.PI / 2;
     centerline.position.set(0, 0.02, STOP_LINE_Z + straightLen / 2);
     this.scene.add(centerline);
@@ -115,64 +115,67 @@ export class GameScene {
     asphalt.rotation.x = -Math.PI / 2;
     asphalt.position.set(0, 0.005, TAXIWAY_Z);
     this.scene.add(asphalt);
-    const taxiCenter = new THREE.Mesh(new THREE.PlaneGeometry(260, 0.5), lineMat);
+    const taxiCenter = new THREE.Mesh(new THREE.PlaneGeometry(260, 0.2), lineMat);
     taxiCenter.rotation.x = -Math.PI / 2;
     taxiCenter.position.set(0, 0.02, TAXIWAY_Z);
     this.scene.add(taxiCenter);
 
     // Turn bar（轉彎橫桿）：標示開始轉彎處，垂直於導入線、位於導入弧銜接點
-    const turnBar = new THREE.Mesh(new THREE.PlaneGeometry(12, 0.8), lineMat);
+    const turnBar = new THREE.Mesh(new THREE.PlaneGeometry(4, 0.5), lineMat);
     turnBar.rotation.x = -Math.PI / 2;
     turnBar.position.set(0, 0.025, JUNCTION_Z);
     this.scene.add(turnBar);
 
     // Alignment bar（對位桿）：與飛機停妥時的延伸中心線重合，停止前供駕駛對準
-    const alignBar = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 6), lineMat);
+    const alignBar = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 4), lineMat);
     alignBar.rotation.x = -Math.PI / 2;
-    alignBar.position.set(0, 0.025, STOP_LINE_Z - 4);
+    alignBar.position.set(0, 0.025, STOP_LINE_Z - 5);
     this.scene.add(alignBar);
 
     // 機型鼻輪停止線（依 ICAO Doc 9157 Pt4 機坪標線）：每個機型一條「黃色橫桿+黑邊」垂直於導入線，
     // 旁邊標機型代號(黑底黃字)。各機型停止距離不同：機身越長、鼻輪停得越外側(距登機口越遠)，
     // 依機身長度按比例排布；橫桿寬度也隨翼展略微比例化。787 對齊功能停止線(STOP_LINE_Z)。
     // len=機身長(m)、span=翼展(m)。距離 z = STOP_LINE_Z + (len - 62.8)*0.16。
-    // 依機身長度排序(小→大)。機身越大、鼻輪停得越外側(+z)。
-    // 廣體機長度相近(787/A330/A350/777 僅差 11m)，純比例距離會擠在一起無法辨識，
-    // 故採「依大小順序等距排列」(仍是越大越外、寬度依翼展比例)，並讓 787 對齊功能停止線。
+    // 機型鼻輪停止橫桿：依「真實機身長度 × 場景比例尺(≈0.72 單位/公尺)」按比例排距。
+    // 機身越長、鼻輪停得越外側(+z，機身才放得進機坪)；787 對齊功能停止線(STOP_LINE_Z)。
+    // len=機身長(m)、span=翼展(m)、track=主輪距(m，決定橫桿寬度)。
+    const SCALE = 0.72; // 場景公尺→單位(787 模型 46 單位 / 62.8m)
+    const REF_LEN = 62.8; // 787 為基準
     this.typeMarks = {};
+    this.typeStopZ = {};
     const TYPES = [
-      { key: 'ATR72', span: 27.0 },
-      { key: 'A320', span: 35.8 },
-      { key: 'B737', span: 35.8 },
-      { key: 'B787', span: 60.1 },
-      { key: 'A330', span: 60.3 },
-      { key: 'A350', span: 64.8 },
-      { key: 'B777', span: 64.8 },
+      { key: 'ATR72', len: 27.2, track: 4.1 },
+      { key: 'A320', len: 37.6, track: 7.6 },
+      { key: 'B737', len: 39.5, track: 5.7 },
+      { key: 'B787', len: 62.8, track: 11.0 },
+      { key: 'A330', len: 63.7, track: 10.7 },
+      { key: 'A350', len: 66.8, track: 10.7 },
+      { key: 'B777', len: 73.9, track: 12.9 },
     ];
-    const refIdx = TYPES.findIndex((t) => t.key === 'B787'); // 787 對齊 STOP_LINE_Z
     TYPES.forEach((t, i) => {
-      const z = STOP_LINE_Z + (i - refIdx) * 2.6; // 等距、越大越外側
-      const across = 3 + t.span * 0.06;            // 橫桿寬度隨翼展比例化
+      const z = STOP_LINE_Z + (t.len - REF_LEN) * SCALE; // 依真實長度按比例
+      const across = t.track * SCALE + 1.2;              // 橫桿寬度依主輪距按比例
+      this.typeStopZ[t.key] = z;
       this._addTypeStopBar(t.key, z, across, i % 2 === 0 ? 1 : -1);
     });
     this._highlightTypeMark('B787'); // 預設機型的停止線標紅(目前作用中)
 
-    // 機位編號（停止點附近）
-    this._addStandLabel('A9', STOP_LINE_Z - 9);
+    // 機位編號（停止點附近，置於最內側機型停止線之前）
+    this._addStandLabel('A9', STOP_LINE_Z + (27.2 - REF_LEN) * 0.72 - 5);
   }
 
   // 單條機型鼻輪停止橫桿：黑邊黃桿(垂直導入線) + 側邊機型代號標牌(黑底黃字)。
   // side=+1/-1：標牌交錯置於左右兩端，避免相鄰標牌重疊。
   _addTypeStopBar(key, z, across, side = 1) {
     const outline = new THREE.Mesh(
-      new THREE.PlaneGeometry(across + 0.5, 1.4),
+      new THREE.PlaneGeometry(across + 0.32, 0.95),
       new THREE.MeshBasicMaterial({ color: 0x14160f })
     );
     outline.rotation.x = -Math.PI / 2;
     outline.position.set(0, 0.028, z);
     this.scene.add(outline);
     const bar = new THREE.Mesh(
-      new THREE.PlaneGeometry(across, 0.9),
+      new THREE.PlaneGeometry(across, 0.62), // 寬度≈0.9m(真實鼻輪停止橫桿)
       new THREE.MeshBasicMaterial({ color: 0xf2d250 })
     );
     bar.rotation.x = -Math.PI / 2;
@@ -180,7 +183,7 @@ export class GameScene {
     this.scene.add(bar);
     this.typeMarks[key] = bar;
     // 機型代號標牌(黑底黃字)，交錯置於橫桿左右端外側
-    this._addTypeLabel(key, side * (across / 2 + 2.6), z);
+    this._addTypeLabel(key, side * (across / 2 + 1.6), z);
   }
 
   // 機型代號標牌：黑底圓角 + 黃字（ICAO 規定黃字黑底）
@@ -197,7 +200,7 @@ export class GameScene {
     ctx.fillText(text, 128, 50);
     const tex = new THREE.CanvasTexture(canvas);
     const mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(4.2, 1.6),
+      new THREE.PlaneGeometry(2.5, 0.95), // 縮到接近真實標牌尺寸
       new THREE.MeshBasicMaterial({ map: tex, transparent: true })
     );
     mesh.rotation.x = -Math.PI / 2;
@@ -455,6 +458,8 @@ export class GameScene {
       this.setAircraftModel(import.meta.env.BASE_URL + m.file, m.yaw, m.len, m.sceneryRatio);
     }
     this._highlightTypeMark(key); // 對應機型停止橫桿標紅
+    // 該機型的鼻輪停止位置(主迴圈會寫入 aircraft.stopRefZ)：飛機停在自己的機型停止線上
+    this.activeStopZ = (this.typeStopZ && this.typeStopZ[key] != null) ? this.typeStopZ[key] : STOP_LINE_Z;
   }
 
   // 載入 glTF 飛機模型，替換現有機體（去場景、旋轉定向、置中、貼地、縮放）。
@@ -923,7 +928,7 @@ export class GameScene {
     // Apron safety line（紅色實線）：翼尖旋轉半徑的禁入邊界，標準為紅色實線
     const safetyMat = new THREE.MeshBasicMaterial({ color: 0xff5468 });
     for (const sx of [-CLEAR, CLEAR]) {
-      const line = new THREE.Mesh(new THREE.PlaneGeometry(0.5, TAXIWAY_Z - 10 - STOP_LINE_Z), safetyMat);
+      const line = new THREE.Mesh(new THREE.PlaneGeometry(0.25, TAXIWAY_Z - 10 - STOP_LINE_Z), safetyMat);
       line.rotation.x = -Math.PI / 2;
       line.position.set(sx, 0.015, (STOP_LINE_Z + TAXIWAY_Z - 10) / 2);
       this.scene.add(line);

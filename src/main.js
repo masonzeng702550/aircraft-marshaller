@@ -146,6 +146,8 @@ function loop(now) {
   // 輪檔員依飛機位置示範「該做的手勢」，玩家照著做
   // 以鼻輪為基準判定停止（模型載入後場景會算出鼻輪相對機身中心的前向距離）
   if (scene.noseGearOffset != null) aircraft.noseRefOffset = scene.noseGearOffset;
+  if (scene.activeStopZ != null) aircraft.stopRefZ = scene.activeStopZ; // 各機型停在自己的機型停止線
+
   const advice = aircraft.recommendedCommand();
   scene.setChockmanPose(advice);
   engineAudio.setRPM(scene.engineRPM ?? 1, aircraft.speed); // 引擎聲隨轉速(關車 spool-down)
