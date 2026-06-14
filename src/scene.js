@@ -132,15 +132,86 @@ export class GameScene {
     alignBar.position.set(0, 0.025, STOP_LINE_Z - 4);
     this.scene.add(alignBar);
 
-    // 停止線（橫向紅線，最醒目）
-    const stopMat = new THREE.MeshBasicMaterial({ color: 0xff5468 });
-    const stopBar = new THREE.Mesh(new THREE.PlaneGeometry(28, 0.9), stopMat);
-    stopBar.rotation.x = -Math.PI / 2;
-    stopBar.position.set(0, 0.03, STOP_LINE_Z);
-    this.scene.add(stopBar);
+    // 機型鼻輪停止線（依 ICAO Doc 9157 Pt4 機坪標線）：每個機型一條「黃色橫桿+黑邊」垂直於導入線，
+    // 旁邊標機型代號(黑底黃字)。各機型停止距離不同：機身越長、鼻輪停得越外側(距登機口越遠)，
+    // 依機身長度按比例排布；橫桿寬度也隨翼展略微比例化。787 對齊功能停止線(STOP_LINE_Z)。
+    // len=機身長(m)、span=翼展(m)。距離 z = STOP_LINE_Z + (len - 62.8)*0.16。
+    // 依機身長度排序(小→大)。機身越大、鼻輪停得越外側(+z)。
+    // 廣體機長度相近(787/A330/A350/777 僅差 11m)，純比例距離會擠在一起無法辨識，
+    // 故採「依大小順序等距排列」(仍是越大越外、寬度依翼展比例)，並讓 787 對齊功能停止線。
+    this.typeMarks = {};
+    const TYPES = [
+      { key: 'ATR72', span: 27.0 },
+      { key: 'A320', span: 35.8 },
+      { key: 'B737', span: 35.8 },
+      { key: 'B787', span: 60.1 },
+      { key: 'A330', span: 60.3 },
+      { key: 'A350', span: 64.8 },
+      { key: 'B777', span: 64.8 },
+    ];
+    const refIdx = TYPES.findIndex((t) => t.key === 'B787'); // 787 對齊 STOP_LINE_Z
+    TYPES.forEach((t, i) => {
+      const z = STOP_LINE_Z + (i - refIdx) * 2.6; // 等距、越大越外側
+      const across = 3 + t.span * 0.06;            // 橫桿寬度隨翼展比例化
+      this._addTypeStopBar(t.key, z, across, i % 2 === 0 ? 1 : -1);
+    });
+    this._highlightTypeMark('B787'); // 預設機型的停止線標紅(目前作用中)
 
     // 機位編號（停止點附近）
     this._addStandLabel('A9', STOP_LINE_Z - 9);
+  }
+
+  // 單條機型鼻輪停止橫桿：黑邊黃桿(垂直導入線) + 側邊機型代號標牌(黑底黃字)。
+  // side=+1/-1：標牌交錯置於左右兩端，避免相鄰標牌重疊。
+  _addTypeStopBar(key, z, across, side = 1) {
+    const outline = new THREE.Mesh(
+      new THREE.PlaneGeometry(across + 0.5, 1.4),
+      new THREE.MeshBasicMaterial({ color: 0x14160f })
+    );
+    outline.rotation.x = -Math.PI / 2;
+    outline.position.set(0, 0.028, z);
+    this.scene.add(outline);
+    const bar = new THREE.Mesh(
+      new THREE.PlaneGeometry(across, 0.9),
+      new THREE.MeshBasicMaterial({ color: 0xf2d250 })
+    );
+    bar.rotation.x = -Math.PI / 2;
+    bar.position.set(0, 0.032, z);
+    this.scene.add(bar);
+    this.typeMarks[key] = bar;
+    // 機型代號標牌(黑底黃字)，交錯置於橫桿左右端外側
+    this._addTypeLabel(key, side * (across / 2 + 2.6), z);
+  }
+
+  // 機型代號標牌：黑底圓角 + 黃字（ICAO 規定黃字黑底）
+  _addTypeLabel(text, x, z) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256; canvas.height = 96;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#14160f';
+    ctx.fillRect(0, 0, 256, 96);
+    ctx.fillStyle = '#f2d250';
+    ctx.font = 'bold 64px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 128, 50);
+    const tex = new THREE.CanvasTexture(canvas);
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.2, 1.6),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true })
+    );
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.rotation.z = Math.PI; // 文字正面朝第三人稱(自後方看 +Z)
+    mesh.position.set(x, 0.033, z);
+    this.scene.add(mesh);
+  }
+
+  // 標示目前作用中機型的停止橫桿(紅)、其餘回黃
+  _highlightTypeMark(key) {
+    if (!this.typeMarks) return;
+    for (const [k, bar] of Object.entries(this.typeMarks)) {
+      bar.material.color.set(k === key ? 0xff5468 : 0xf2d250);
+    }
   }
 
   // 背景：白天機場（航廈、空橋、滑行道/跑道、機棚、塔台、雲）
@@ -383,6 +454,7 @@ export class GameScene {
       this.noseSteerMax = (m.steerDeg || 34) * Math.PI / 180; // 鼻輪最大轉向角
       this.setAircraftModel(import.meta.env.BASE_URL + m.file, m.yaw, m.len, m.sceneryRatio);
     }
+    this._highlightTypeMark(key); // 對應機型停止橫桿標紅
   }
 
   // 載入 glTF 飛機模型，替換現有機體（去場景、旋轉定向、置中、貼地、縮放）。
@@ -792,7 +864,7 @@ export class GameScene {
     this.chockman = ch.grp;
     this.chArmL = ch.armL;
     this.chArmR = ch.armR;
-    this.chockman.position.set(0, 0, STOP_LINE_Z + 3);
+    this.chockman.position.set(0, 0, STOP_LINE_Z + 11); // 置於機型停止橫桿群前方，避免站在標線上
     this.scene.add(this.chockman);
 
     // 兩位 Wing Walker：固定站在翼尖旋轉半徑的左右淨空邊界（不隨飛機移動）。
