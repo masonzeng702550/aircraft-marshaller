@@ -2,7 +2,7 @@
 // 提供第三人稱(TPV)與第一人稱(FPV)兩種相機。
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { STOP_LINE_Z, TAXIWAY_Z } from './aircraft.js';
 import { GESTURES } from './gesture.js';
@@ -11,8 +11,9 @@ import { GESTURES } from './gesture.js';
 // 模型授權 CC-BY-4.0："Boeing 787-8" by rocket0314、"Boeing 777-300ER" by hakai315 (Sketchfab)
 export const AIRCRAFT_MODELS = {
   // sceneryRatio：移除 footprint 大於「整體×此比例」的網格(去除打包的跑道/地面)；0 = 不過濾。
-  B787: { file: 'models/787/787.glb', yaw: Math.PI, len: 46, sceneryRatio: 0.45, type: 'B787', label: '787' },
-  B777: { file: 'models/777/777.glb', yaw: -Math.PI / 2, len: 52, sceneryRatio: 0, type: 'B777', label: '777' },
+  // steerDeg：鼻輪最大轉向角(度)。
+  B787: { file: 'models/787/787.glb', yaw: Math.PI, len: 46, sceneryRatio: 0.45, steerDeg: 70, type: 'B787', label: '787' },
+  B777: { file: 'models/777/777.glb', yaw: -Math.PI / 2, len: 52, sceneryRatio: 0, steerDeg: 75, type: 'B777', label: '777' },
 };
 const DEFAULT_MODEL = 'B787';
 
@@ -349,13 +350,20 @@ export class GameScene {
   // 依機型 key 載入對應 glTF 模型
   loadAircraft(key) {
     const m = AIRCRAFT_MODELS[key];
-    if (m) this.setAircraftModel(import.meta.env.BASE_URL + m.file, m.yaw, m.len, m.sceneryRatio);
+    if (m) {
+      this.noseSteerMax = (m.steerDeg || 34) * Math.PI / 180; // 鼻輪最大轉向角
+      this.setAircraftModel(import.meta.env.BASE_URL + m.file, m.yaw, m.len, m.sceneryRatio);
+    }
   }
 
   // 載入 glTF 飛機模型，替換現有機體（去場景、旋轉定向、置中、貼地、縮放）。
   setAircraftModel(url, yaw = 0, targetLen = 46, sceneryRatio = 0) {
     const loader = new GLTFLoader();
-    loader.setMeshoptDecoder(MeshoptDecoder); // 解碼 meshopt 壓縮的幾何
+    if (!GameScene._draco) {
+      GameScene._draco = new DRACOLoader();
+      GameScene._draco.setDecoderPath(import.meta.env.BASE_URL + 'draco/'); // 自架解碼器(免 CDN)
+    }
+    loader.setDRACOLoader(GameScene._draco); // 解碼 Draco 壓縮的幾何
     loader.load(
       url,
       (gltf) => {
@@ -419,7 +427,7 @@ export class GameScene {
         } catch (e) { console.warn('貼地精修失敗：', e); }
 
         this._setupNoseSteer(holder, targetLen);
-        this._setupSpinners(holder, targetLen);
+        this._setupWheels(holder, targetLen);
       },
       undefined,
       (err) => console.warn('飛機模型載入失敗：', err)
@@ -494,10 +502,9 @@ export class GameScene {
     return maxD > 0 && dims[1][1] > 0.8 * maxD && dims[0][1] < 0.5 * maxD && dims[0][0] !== 'y';
   }
 
-  // 偵測會旋轉的零件：輪胎(隨地速滾) 與 引擎扇葉(隨引擎轉速)。
-  _setupSpinners(holder, targetLen) {
+  // 偵測可滾動的輪胎：圓形 + 貼地 + 非極小 + 成群且取起落架最底層(=真正輪胎)
+  _setupWheels(holder, targetLen) {
     this.wheels = [];
-    this.fans = [];
     try {
       holder.updateMatrixWorld(true);
       const round = [];
@@ -512,22 +519,16 @@ export class GameScene {
         const maxW = Math.max(ws.x, ws.y, ws.z);
         round.push({ mesh: o, axis: dims[0][0], radius: maxW / 2 || 0.5, maxW, x: wc.x, y: wc.y, z: wc.z });
       });
-      // 引擎扇葉：較大的圓盤(明顯比輪胎大；777 的 GE90 風扇更大)
-      for (const r of round) {
-        if (r.maxW > 0.06 * targetLen && r.maxW < 0.32 * targetLen && r.y < 0.2 * targetLen) this.fans.push(r);
-      }
-      // 輪胎：小、貼地、非極小(排除螺栓/細件)，且附近還有其他同類(成群)→ 排除孤立小圓件
       const small = round.filter((r) =>
         r.maxW <= 0.06 * targetLen && r.maxW > 0.005 * targetLen && r.y < 0.12 * targetLen);
       const grouped = small.filter((r) =>
         small.filter((s) => Math.abs(s.x - r.x) < 3.5 && Math.abs(s.z - r.z) < 3.5).length >= 2);
-      // 只取「起落架最底部」那層(=真正的輪胎)，排除上方支柱/連桿/叉臂
       if (grouped.length) {
         const minY = Math.min(...grouped.map((r) => r.y));
         this.wheels = grouped.filter((r) => r.y < minY + 0.7);
       }
     } catch (e) {
-      console.warn('旋轉件偵測失敗：', e);
+      console.warn('輪子偵測失敗：', e);
     }
   }
 
@@ -776,26 +777,22 @@ export class GameScene {
     this.aircraftGroup.position.set(ac.x, 0, ac.z);
     this.aircraftGroup.rotation.y = ac.heading;
 
-    // 鼻輪轉向：依轉向指令偏轉，平滑過渡（轉向時前輪原地打角）
+    // 鼻輪轉向：依轉向指令偏轉到最大轉向角(各機型不同)，平滑過渡、原地打角
+    const maxSteer = this.noseSteerMax ?? 0.6;
     let steerTarget = 0;
-    if (ac.command === GESTURES.TURN_LEFT) steerTarget = 0.6;
-    else if (ac.command === GESTURES.TURN_RIGHT) steerTarget = -0.6;
+    if (ac.command === GESTURES.TURN_LEFT) steerTarget = maxSteer;
+    else if (ac.command === GESTURES.TURN_RIGHT) steerTarget = -maxSteer;
     this._steer = (this._steer || 0) + (steerTarget - (this._steer || 0)) * 0.15;
     if (this.noseGear) this.noseGear.rotation.y = this._steer;
 
-    // 輪子滾動：依地速繞各自輪軸旋轉（dt 約 1/60）
+    // 輪子滾動：依地速繞各自輪軸旋轉
     if (this.wheels && this.wheels.length && ac.speed > 0.001) {
-      for (const w of this.wheels) {
-        w.mesh.rotation[w.axis] += (ac.speed / 60) / w.radius;
-      }
+      for (const w of this.wheels) w.mesh.rotation[w.axis] += (ac.speed / 60) / w.radius;
     }
 
-    // 引擎扇葉：運轉中持續高速旋轉；停妥(關車)後轉速慢慢衰減到停。
+    // 引擎轉速比例(供引擎聲)：運轉中=1，停妥關車後慢慢衰減到 0(spool-down)。
     const rpmTarget = ac.stopped ? 0 : 1;
     this.engineRPM = (this.engineRPM ?? 1) + (rpmTarget - (this.engineRPM ?? 1)) * 0.012;
-    if (this.fans && this.engineRPM > 0.002) {
-      for (const f of this.fans) f.mesh.rotation[f.axis] += this.engineRPM * 0.5;
-    }
   }
 
   resize() {
