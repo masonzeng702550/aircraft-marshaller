@@ -452,7 +452,9 @@ export class GameScene {
           const b = new THREE.Box3().setFromObject(o);
           const s = new THREE.Vector3(); b.getSize(s);
           const c = new THREE.Vector3(); b.getCenter(c);
-          if (Math.max(s.x, s.y, s.z) < 0.08 * targetLen && c.y < 0.15 * targetLen) cand.push({ o, z: c.z });
+          // 用「機身座標系」的 z(機鼻恆為 -Z)判定前後，避免載入時 spawn 轉向造成抓錯邊
+          const bodyZ = this.aircraftGroup.worldToLocal(c.clone()).z;
+          if (Math.max(s.x, s.y, s.z) < 0.08 * targetLen && c.y < 0.15 * targetLen) cand.push({ o, z: bodyZ });
         });
         if (!cand.length) return;
         const minZ = Math.min(...cand.map((w) => w.z));
@@ -514,11 +516,12 @@ export class GameScene {
       for (const r of round) {
         if (r.maxW > 0.06 * targetLen && r.maxW < 0.32 * targetLen && r.y < 0.2 * targetLen) this.fans.push(r);
       }
-      // 輪胎：小、貼地，且附近還有其他同類(成群)→ 排除孤立的小圓件
-      const small = round.filter((r) => r.maxW <= 0.06 * targetLen && r.y < 0.12 * targetLen);
+      // 輪胎：小、貼地、非極小(排除螺栓/細件)，且附近還有其他同類(成群)→ 排除孤立小圓件
+      const small = round.filter((r) =>
+        r.maxW <= 0.06 * targetLen && r.maxW > 0.005 * targetLen && r.y < 0.12 * targetLen);
       const grouped = small.filter((r) =>
         small.filter((s) => Math.abs(s.x - r.x) < 3.5 && Math.abs(s.z - r.z) < 3.5).length >= 2);
-      // 只取「起落架最底部」的那層(=真正的輪胎)，排除上方的支柱/連桿/叉臂等較高零件
+      // 只取「起落架最底部」那層(=真正的輪胎)，排除上方支柱/連桿/叉臂
       if (grouped.length) {
         const minY = Math.min(...grouped.map((r) => r.y));
         this.wheels = grouped.filter((r) => r.y < minY + 0.7);

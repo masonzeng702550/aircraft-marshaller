@@ -18,10 +18,10 @@ export const NOSE_OFFSET = 22;
 // turnRate(rad/s) 取真實滑行轉彎半徑 R≈v/ω：窄體 ~21m、廣體 ~29m、區域機 ~17m。
 // wingspan 取真實翼展(m)：窄體~A320 35.8、廣體~777 60、區域機~E-jet 26。
 export const AIRCRAFT_TYPES = {
-  // B787-9：長 63m、翼展 60m。turnRate 0.07 → R≈29m。
-  B787: { label: '787', maxSpeed: 11 * KNOT, idle: 5 * KNOT, standSpeed: 4 * KNOT, accel: 1.2, brake: 1.8, turnRate: 0.07, wingspan: 60 },
-  // B777-300ER：更長更大(74m/65m) → 轉彎半徑更大：turnRate 0.038 → R≈47m、整體更慢。
-  B777: { label: '777', maxSpeed: 10 * KNOT, idle: 4.5 * KNOT, standSpeed: 3.5 * KNOT, accel: 1.0, brake: 1.5, turnRate: 0.038, wingspan: 65 },
+  // B787-9：長 63m、翼展 60m。turnRate 0.05 → R≈41m(弧度更大)。
+  B787: { label: '787', maxSpeed: 11 * KNOT, idle: 5 * KNOT, standSpeed: 4 * KNOT, accel: 1.2, brake: 1.8, turnRate: 0.05, wingspan: 60 },
+  // B777-300ER：更長更大(74m/65m) → 轉彎半徑大很多：turnRate 0.022 → R≈82m、整體更慢。
+  B777: { label: '777', maxSpeed: 10 * KNOT, idle: 4.5 * KNOT, standSpeed: 3.5 * KNOT, accel: 1.0, brake: 1.5, turnRate: 0.022, wingspan: 65 },
 };
 
 export class Aircraft {
