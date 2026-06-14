@@ -407,6 +407,9 @@ export class GameScene {
           this.aircraftGroup.remove(this.aircraftGroup.children[0]);
         }
         this.aircraftGroup.add(holder);
+        // 重要：貼地位移 + 重新掛載後，先更新世界矩陣，否則下面以 setFromObject/worldToLocal
+        // 計算鼻輪 pivot 會用到舊矩陣，導致轉向軸算錯、鼻輪沿大弧線飄走。
+        this.aircraftGroup.updateMatrixWorld(true);
         this._setupNoseSteer(holder, targetLen);
         this._setupWheels(holder, targetLen);
       },
@@ -420,6 +423,7 @@ export class GameScene {
   _setupNoseSteer(holder, targetLen) {
     this.noseGear = null;
     try {
+      holder.updateMatrixWorld(true); // 確保 setFromObject/worldToLocal 使用最新矩陣
       const isAncestor = (a, o) => { for (let p = o.parent; p; p = p.parent) if (p === a) return true; return false; };
       let tops = [];
       let axisSrc = null;
@@ -454,6 +458,7 @@ export class GameScene {
       const pivot = new THREE.Group();
       pivot.position.copy(holder.worldToLocal(new THREE.Vector3(aCtr.x, gCtr.y, aCtr.z)));
       holder.add(pivot);
+      pivot.updateMatrixWorld(true); // attach 依賴 pivot 的世界矩陣
       tops.forEach((p) => pivot.attach(p)); // attach 保留世界座標 → 繞鼻輪垂直軸原地轉
       this.noseGear = pivot;
     } catch (e) {
