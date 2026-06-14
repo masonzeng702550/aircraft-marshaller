@@ -443,19 +443,20 @@ export class GameScene {
       });
       tops = matched.filter((o) => !matched.some((a) => a !== o && isAncestor(a, o)));
       axisSrc = tops.find((o) => /wheel|tire/i.test(o.name)) || null;
-      // (B) 幾何偵測（無具名齒輪，如 777）：最前端(z 最小)的低矮小型網格
+      // (B) 幾何偵測（無具名齒輪，如 777）：只取「輪胎形狀」(圓+薄+軸水平)的最前端群，
+      //     不要把支柱/連桿/艙門也抓進來(否則整組亂轉)。
       if (!tops.length) {
         const cand = [];
         holder.traverse((o) => {
-          if (!o.isMesh) return;
+          if (!this._isWheelShape(o)) return;
           const b = new THREE.Box3().setFromObject(o);
           const s = new THREE.Vector3(); b.getSize(s);
           const c = new THREE.Vector3(); b.getCenter(c);
-          if (Math.max(s.x, s.y, s.z) < 0.12 * targetLen && c.y < 0.2 * targetLen) cand.push({ o, z: c.z });
+          if (Math.max(s.x, s.y, s.z) < 0.08 * targetLen && c.y < 0.15 * targetLen) cand.push({ o, z: c.z });
         });
         if (!cand.length) return;
         const minZ = Math.min(...cand.map((w) => w.z));
-        tops = cand.filter((w) => w.z < minZ + 0.12 * targetLen).map((w) => w.o);
+        tops = cand.filter((w) => w.z < minZ + 0.06 * targetLen).map((w) => w.o);
         axisSrc = tops[0];
       }
       if (!tops.length) return;
@@ -480,9 +481,18 @@ export class GameScene {
     }
   }
 
+  // 輪胎/圓盤形狀判定：兩大維接近(圓) + 一維薄(軸) + 軸為水平(排除平放圓盤/標線)
+  _isWheelShape(o) {
+    if (!o.isMesh || !o.geometry) return false;
+    o.geometry.computeBoundingBox();
+    if (!o.geometry.boundingBox) return false;
+    const ld = new THREE.Vector3(); o.geometry.boundingBox.getSize(ld);
+    const dims = [['x', ld.x], ['y', ld.y], ['z', ld.z]].sort((a, b) => a[1] - b[1]);
+    const maxD = dims[2][1];
+    return maxD > 0 && dims[1][1] > 0.8 * maxD && dims[0][1] < 0.5 * maxD && dims[0][0] !== 'y';
+  }
+
   // 偵測會旋轉的零件：輪胎(隨地速滾) 與 引擎扇葉(隨引擎轉速)。
-  // 圓形判定：兩大維接近 + 一維薄(=軸) + 軸為水平(排除平放圓盤/標線)。
-  // 輪胎=小且貼地且「成群」(排除鼻輪附近的孤立小圓件)；扇葉=較大的圓盤。
   _setupSpinners(holder, targetLen) {
     this.wheels = [];
     this.fans = [];
@@ -490,13 +500,10 @@ export class GameScene {
       holder.updateMatrixWorld(true);
       const round = [];
       holder.traverse((o) => {
-        if (!o.isMesh || !o.geometry) return;
+        if (!this._isWheelShape(o)) return;
         o.geometry.computeBoundingBox();
         const ld = new THREE.Vector3(); o.geometry.boundingBox.getSize(ld);
         const dims = [['x', ld.x], ['y', ld.y], ['z', ld.z]].sort((a, b) => a[1] - b[1]);
-        const maxD = dims[2][1];
-        if (maxD <= 0) return;
-        if (!(dims[1][1] > 0.8 * maxD && dims[0][1] < 0.5 * maxD && dims[0][0] !== 'y')) return;
         const wb = new THREE.Box3().setFromObject(o);
         const ws = new THREE.Vector3(); wb.getSize(ws);
         const wc = new THREE.Vector3(); wb.getCenter(wc);

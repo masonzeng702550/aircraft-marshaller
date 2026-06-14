@@ -2,8 +2,19 @@
 //   低頻隆隆 + 中頻轟鳴 + 高頻氣流嘶聲(皆為過濾後的雜訊) + 微弱風扇嘯聲(正弦)。
 // 音量/濾波/音高隨引擎轉速(rpm 0..1)變化；關車 rpm→0 → 自然降頻降音(spool-down)到靜音。
 // 採合成：可控的 spool-down、與扇葉視覺同步、無外部檔案/授權問題。
+// 不同引擎音色設定：GE90(777，超大風扇)更低沉雄厚；GEnx(787)較高的風扇嘯聲。
+const ENGINE_PROFILES = {
+  GEnx: { roarBase: 300, roarSpan: 320, whineBase: 520, whineSpan: 720, rumbleHz: 180, rumble: 0.5, roar: 0.55, whine: 0.035 },
+  GE90: { roarBase: 210, roarSpan: 240, whineBase: 360, whineSpan: 520, rumbleHz: 130, rumble: 0.7, roar: 0.62, whine: 0.045 },
+};
+
 export class EngineAudio {
-  constructor() { this.ctx = null; this.started = false; }
+  constructor() { this.ctx = null; this.started = false; this.profile = ENGINE_PROFILES.GEnx; }
+
+  setEngineType(type) {
+    this.profile = ENGINE_PROFILES[type] || ENGINE_PROFILES.GEnx;
+    if (this.lpRumble) this.lpRumble.frequency.value = this.profile.rumbleHz;
+  }
 
   start() {
     if (this.started) return;
@@ -30,7 +41,8 @@ export class EngineAudio {
     const makeNoise = () => { const n = ctx.createBufferSource(); n.buffer = buf; n.loop = true; n.start(); return n; };
 
     // 低頻隆隆
-    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 180; lp.Q.value = 0.6;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = this.profile.rumbleHz; lp.Q.value = 0.6;
+    this.lpRumble = lp;
     this.rumble = ctx.createGain(); this.rumble.gain.value = 0;
     makeNoise().connect(lp); lp.connect(this.rumble); this.rumble.connect(this.master);
 
@@ -67,13 +79,14 @@ export class EngineAudio {
     const t = this.ctx.currentTime, k = 0.3;
     const r = Math.max(0, Math.min(1, rpm));
     const thrust = Math.min(1, spd / 6);
+    const p = this.profile;
     this.master.gain.setTargetAtTime(0.45, t, 0.1);
-    this.rumble.gain.setTargetAtTime((0.5 * r + 0.1) * (r > 0.01 ? 1 : 0), t, k);
-    this.roar.gain.setTargetAtTime(0.55 * r * (0.7 + 0.3 * thrust), t, k);
+    this.rumble.gain.setTargetAtTime((p.rumble * r + 0.1) * (r > 0.01 ? 1 : 0), t, k);
+    this.roar.gain.setTargetAtTime(p.roar * r * (0.7 + 0.3 * thrust), t, k);
     this.hiss.gain.setTargetAtTime(0.06 * r, t, k);
-    this.whine.gain.setTargetAtTime(0.035 * r, t, k);
-    this.roarBP.frequency.setTargetAtTime(300 + r * 320 + thrust * 120, t, k);
-    const wf = 500 + r * 700; // 風扇音高隨轉速；關車降回低點
+    this.whine.gain.setTargetAtTime(p.whine * r, t, k);
+    this.roarBP.frequency.setTargetAtTime(p.roarBase + r * p.roarSpan + thrust * 120, t, k);
+    const wf = p.whineBase + r * p.whineSpan; // 風扇音高隨轉速；關車降回低點
     this.whineOscs.forEach((o, i) => o.frequency.setTargetAtTime(wf * (i ? 1.005 : 1), t, k));
   }
 }

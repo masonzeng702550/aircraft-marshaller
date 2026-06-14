@@ -55,6 +55,7 @@ $('btn-fpv').addEventListener('click', () => {
 function selectModel(key, btn) {
   aircraft.setType(key);
   scene.loadAircraft(key);
+  engineAudio.setEngineType(key === 'B777' ? 'GE90' : 'GEnx'); // 777=GE90、787=GEnx
   aircraft.reset();
   document.querySelectorAll('#model-toggle button').forEach((b) => b.classList.remove('active'));
   btn.classList.add('active');
