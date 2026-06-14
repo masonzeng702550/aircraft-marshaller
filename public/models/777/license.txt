@@ -1,0 +1,11 @@
+Model Information:
+* title:	Boeing 777-300ER Model
+* source:	https://sketchfab.com/3d-models/boeing-777-300er-model-322e7961d2024bba834887878d2d49a2
+* author:	hakai315 (https://sketchfab.com/hakai315)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Boeing 777-300ER Model" (https://sketchfab.com/3d-models/boeing-777-300er-model-322e7961d2024bba834887878d2d49a2) by hakai315 (https://sketchfab.com/hakai315) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
