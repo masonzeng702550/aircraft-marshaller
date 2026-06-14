@@ -1,0 +1,11 @@
+Model Information:
+* title:	Boeing 787-8
+* source:	https://sketchfab.com/3d-models/boeing-787-8-22a06131abdf4158a81f9ad2ddfde5b9
+* author:	rocket0314 (https://sketchfab.com/rocket0314)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Boeing 787-8" (https://sketchfab.com/3d-models/boeing-787-8-22a06131abdf4158a81f9ad2ddfde5b9) by rocket0314 (https://sketchfab.com/rocket0314) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
