@@ -20,8 +20,8 @@ export const NOSE_OFFSET = 22;
 export const AIRCRAFT_TYPES = {
   // B787-9：長 63m、翼展 60m。turnRate 0.07 → R≈29m。
   B787: { label: '787', maxSpeed: 11 * KNOT, idle: 5 * KNOT, standSpeed: 4 * KNOT, accel: 1.2, brake: 1.8, turnRate: 0.07, wingspan: 60 },
-  // B777-300ER：更長更大(74m/65m) → 轉彎半徑更大：turnRate 0.05 → R≈36m、整體更慢。
-  B777: { label: '777', maxSpeed: 10 * KNOT, idle: 4.5 * KNOT, standSpeed: 3.5 * KNOT, accel: 1.0, brake: 1.5, turnRate: 0.05, wingspan: 65 },
+  // B777-300ER：更長更大(74m/65m) → 轉彎半徑更大：turnRate 0.038 → R≈47m、整體更慢。
+  B777: { label: '777', maxSpeed: 10 * KNOT, idle: 4.5 * KNOT, standSpeed: 3.5 * KNOT, accel: 1.0, brake: 1.5, turnRate: 0.038, wingspan: 65 },
 };
 
 export class Aircraft {

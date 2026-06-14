@@ -382,49 +382,107 @@ export class GameScene {
         new THREE.Box3().setFromObject(holder).getSize(size);
         holder.scale.setScalar(targetLen / (Math.max(size.x, size.z) || 1));
         holder.updateMatrixWorld(true);
-        // 置中(x,z) + 起落架貼地(y)
+        // 置中(x,z) + 以「輪子最低點」貼地(y)，避免機身其他部位較低造成整機浮空
         const box2 = new THREE.Box3().setFromObject(holder);
-        const c = new THREE.Vector3();
-        box2.getCenter(c);
-        holder.position.set(-c.x, -box2.min.y, -c.z);
+        const c = box2.getCenter(new THREE.Vector3());
+        let wheelBottom = Infinity;
+        holder.traverse((o) => {
+          if (!o.isMesh || !o.geometry) return;
+          o.geometry.computeBoundingBox();
+          const ld = new THREE.Vector3(); o.geometry.boundingBox.getSize(ld);
+          const d = [ld.x, ld.y, ld.z].sort((a, b) => a - b);
+          if (!(d[1] > 0.65 * d[2] && d[0] < 0.6 * d[2])) return; // 非圓形
+          const b = new THREE.Box3().setFromObject(o);
+          const s = new THREE.Vector3(); b.getSize(s);
+          const ctr = new THREE.Vector3(); b.getCenter(ctr);
+          if (ctr.y < 0.3 * targetLen && Math.max(s.x, s.y, s.z) < 0.16 * targetLen) {
+            wheelBottom = Math.min(wheelBottom, b.min.y);
+          }
+        });
+        const groundY = isFinite(wheelBottom) ? wheelBottom : box2.min.y;
+        holder.position.set(-c.x, -groundY, -c.z);
 
         // 換掉現有機體
         while (this.aircraftGroup.children.length) {
           this.aircraftGroup.remove(this.aircraftGroup.children[0]);
         }
         this.aircraftGroup.add(holder);
-        this._setupNoseSteer(holder);
+        this._setupNoseSteer(holder, targetLen);
+        this._setupWheels(holder, targetLen);
       },
       undefined,
       (err) => console.warn('飛機模型載入失敗：', err)
     );
   }
 
-  // 把鼻輪節點收進一個位於其垂直軸的 pivot，使轉向時原地打角（不沿弧線跑）。
-  // 注意：齒輪名稱常在父 Object3D 上(非 Mesh)，故比對所有節點名稱，並只取最外層相符節點。
-  _setupNoseSteer(holder) {
+  // 建立鼻輪轉向 pivot：轉向軸必須通過「鼻輪本身」的 (x,z)，否則轉動時會沿弧線飄離。
+  // (A) 有具名齒輪節點(787)：以輪/胎節點的 x,z 為軸；(B) 無具名(777)：幾何抓最前端低矮小輪。
+  _setupNoseSteer(holder, targetLen) {
     this.noseGear = null;
     try {
+      const isAncestor = (a, o) => { for (let p = o.parent; p; p = p.parent) if (p === a) return true; return false; };
+      let tops = [];
+      let axisSrc = null;
+      // (A) 名稱比對
       const matched = [];
       holder.traverse((o) => {
         if (o.name && /front|nose|nlg/i.test(o.name) &&
-            /wheel|tire|strut|gear/i.test(o.name) && !/door|light/i.test(o.name)) {
-          matched.push(o);
-        }
+            /wheel|tire|strut|gear/i.test(o.name) && !/door|light/i.test(o.name)) matched.push(o);
       });
-      const isAncestor = (a, o) => { for (let p = o.parent; p; p = p.parent) if (p === a) return true; return false; };
-      const tops = matched.filter((o) => !matched.some((a) => a !== o && isAncestor(a, o)));
+      tops = matched.filter((o) => !matched.some((a) => a !== o && isAncestor(a, o)));
+      axisSrc = tops.find((o) => /wheel|tire/i.test(o.name)) || null;
+      // (B) 幾何偵測（無具名齒輪，如 777）：最前端(z 最小)的低矮小型網格
+      if (!tops.length) {
+        const cand = [];
+        holder.traverse((o) => {
+          if (!o.isMesh) return;
+          const b = new THREE.Box3().setFromObject(o);
+          const s = new THREE.Vector3(); b.getSize(s);
+          const c = new THREE.Vector3(); b.getCenter(c);
+          if (Math.max(s.x, s.y, s.z) < 0.12 * targetLen && c.y < 0.2 * targetLen) cand.push({ o, z: c.z });
+        });
+        if (!cand.length) return;
+        const minZ = Math.min(...cand.map((w) => w.z));
+        tops = cand.filter((w) => w.z < minZ + 0.12 * targetLen).map((w) => w.o);
+        axisSrc = tops[0];
+      }
       if (!tops.length) return;
-      const bb = new THREE.Box3();
-      tops.forEach((p) => bb.expandByObject(p));
-      const ctr = bb.getCenter(new THREE.Vector3());       // 鼻輪群中心(世界座標)
+      // 轉向軸 (x,z) 取自鼻輪本身；y 取整組中心
+      const aCtr = new THREE.Box3().setFromObject(axisSrc || tops[0]).getCenter(new THREE.Vector3());
+      const gBox = new THREE.Box3(); tops.forEach((p) => gBox.expandByObject(p));
+      const gCtr = gBox.getCenter(new THREE.Vector3());
       const pivot = new THREE.Group();
-      pivot.position.copy(holder.worldToLocal(ctr.clone())); // 垂直轉向軸位置
+      pivot.position.copy(holder.worldToLocal(new THREE.Vector3(aCtr.x, gCtr.y, aCtr.z)));
       holder.add(pivot);
-      tops.forEach((p) => pivot.attach(p));                 // attach 保留世界座標 → 繞此軸原地轉
+      tops.forEach((p) => pivot.attach(p)); // attach 保留世界座標 → 繞鼻輪垂直軸原地轉
       this.noseGear = pivot;
     } catch (e) {
       console.warn('鼻輪轉向設定失敗：', e);
+    }
+  }
+
+  // 偵測「會滾動的輪子」：低矮、小型、圓形(兩維相近、一維較薄=輪軸)的網格。
+  _setupWheels(holder, targetLen) {
+    this.wheels = [];
+    try {
+      holder.traverse((o) => {
+        if (!o.isMesh || !o.geometry) return;
+        o.geometry.computeBoundingBox();
+        const ld = new THREE.Vector3(); o.geometry.boundingBox.getSize(ld);
+        const dims = [['x', ld.x], ['y', ld.y], ['z', ld.z]].sort((a, b) => a[1] - b[1]);
+        if (dims[2][1] <= 0) return;
+        const round = dims[1][1] > 0.65 * dims[2][1] && dims[0][1] < 0.6 * dims[2][1];
+        if (!round) return;
+        const wb = new THREE.Box3().setFromObject(o);
+        const ws = new THREE.Vector3(); wb.getSize(ws);
+        const wc = new THREE.Vector3(); wb.getCenter(wc);
+        const maxW = Math.max(ws.x, ws.y, ws.z);
+        if (wc.y < 0.22 * targetLen && maxW < 0.16 * targetLen) {
+          this.wheels.push({ mesh: o, axis: dims[0][0], radius: maxW / 2 || 0.5 });
+        }
+      });
+    } catch (e) {
+      console.warn('輪子偵測失敗：', e);
     }
   }
 
@@ -673,12 +731,19 @@ export class GameScene {
     this.aircraftGroup.position.set(ac.x, 0, ac.z);
     this.aircraftGroup.rotation.y = ac.heading;
 
-    // 鼻輪轉向：依轉向指令偏轉，平滑過渡（轉向時前輪明顯打角）
+    // 鼻輪轉向：依轉向指令偏轉，平滑過渡（轉向時前輪原地打角）
     let steerTarget = 0;
     if (ac.command === GESTURES.TURN_LEFT) steerTarget = 0.6;
     else if (ac.command === GESTURES.TURN_RIGHT) steerTarget = -0.6;
     this._steer = (this._steer || 0) + (steerTarget - (this._steer || 0)) * 0.15;
     if (this.noseGear) this.noseGear.rotation.y = this._steer;
+
+    // 輪子滾動：依速度繞各自輪軸旋轉（dt 約 1/60）
+    if (this.wheels && this.wheels.length && ac.speed > 0.001) {
+      for (const w of this.wheels) {
+        w.mesh.rotation[w.axis] += (ac.speed / 60) / w.radius;
+      }
+    }
   }
 
   resize() {
