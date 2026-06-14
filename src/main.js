@@ -96,13 +96,13 @@ function loop(now) {
   lastT = now;
 
   // 取得當前手勢
-  let raw = GESTURES.NONE, conf = 0, tracked = false;
+  let raw = GESTURES.NONE, conf = 0, tracked = false, lm = null;
   if (useKeyboard) {
     raw = keyboardGesture;
     conf = raw === GESTURES.NONE ? 0 : 1;
     tracked = true; // 鍵盤模式視為「有輸入」
   } else if (tracker) {
-    const lm = tracker.detect(now);
+    lm = tracker.detect(now);
     if (lm) {
       tracked = true;
       const res = classifyPose(lm);
@@ -115,7 +115,9 @@ function loop(now) {
   aircraft.setCommand(command);
   aircraft.update(dt);
   scene.syncAircraft(aircraft);
-  scene.setMarshallerPose(raw); // 化身即時鏡像玩家動作
+  // 有骨架時化身關節即時跟隨玩家手臂；無鏡頭(鍵盤)時退回離散姿勢
+  if (lm) scene.setMarshallerFromLandmarks(lm);
+  else scene.setMarshallerPose(raw);
   scene.render();
   updateHUD(raw, conf, command, tracked);
 

@@ -17,6 +17,7 @@ export class GameScene {
     this._buildCameras();
     this._buildLights();
     this._buildApron();
+    this._buildBackground();
     this.aircraftGroup = this._buildAircraft();
     this.scene.add(this.aircraftGroup);
     this._buildNPCs();
@@ -30,12 +31,12 @@ export class GameScene {
     // 第三人稱：站在飛機正前方（marshaller 身後上方），看得到自己的化身指揮、
     // 也看得到飛機沿垂直滑行道從側邊滑入
     this.tpv = new THREE.PerspectiveCamera(72, aspect, 0.1, 600);
-    this.tpv.position.set(0, 30, -26);
-    this.tpv.lookAt(0, 0, 44);
-    // 第一人稱：marshaller 視角，面向來機(+Z)
-    this.fpv = new THREE.PerspectiveCamera(72, aspect, 0.1, 500);
-    this.fpv.position.set(0, 2.4, 1.4);
-    this.fpv.lookAt(0, 2, 60);
+    this.tpv.position.set(0, 9, -20);
+    this.tpv.lookAt(0, 2, 28);
+    // 第一人稱：marshaller 視角（站位 z=-8），面向來機(+Z)
+    this.fpv = new THREE.PerspectiveCamera(74, aspect, 0.1, 500);
+    this.fpv.position.set(0, 3.2, -8);
+    this.fpv.lookAt(0, 3, 50);
     this.camera = this.tpv;
   }
 
@@ -84,23 +85,109 @@ export class GameScene {
       this.scene.add(dash);
     }
 
-    // 停止線（橫向紅線）
+    // Turn bar（轉彎橫桿）：標示開始轉彎處，垂直於導入線、位於導入弧銜接點
+    const turnBar = new THREE.Mesh(new THREE.PlaneGeometry(7, 0.7), lineMat);
+    turnBar.rotation.x = -Math.PI / 2;
+    turnBar.position.set(0, 0.025, JUNCTION_Z);
+    this.scene.add(turnBar);
+
+    // Alignment bar（對位桿）：與飛機停妥時的延伸中心線重合，停止前供駕駛對準
+    const alignBar = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 6), lineMat);
+    alignBar.rotation.x = -Math.PI / 2;
+    alignBar.position.set(0, 0.025, STOP_LINE_Z - 4);
+    this.scene.add(alignBar);
+
+    // 停止線（橫向紅線，最醒目）
     const stopMat = new THREE.MeshBasicMaterial({ color: 0xff5468 });
-    const stopBar = new THREE.Mesh(new THREE.PlaneGeometry(16, 0.6), stopMat);
+    const stopBar = new THREE.Mesh(new THREE.PlaneGeometry(16, 0.7), stopMat);
     stopBar.rotation.x = -Math.PI / 2;
     stopBar.position.set(0, 0.03, STOP_LINE_Z);
     this.scene.add(stopBar);
 
     // 機位編號（停止點附近）
-    this._addStandLabel('A9', STOP_LINE_Z - 3);
+    this._addStandLabel('A9', STOP_LINE_Z - 9);
+  }
 
-    // 空橋占位（停止線旁，往飛機門靠）
-    this.jetbridge = new THREE.Mesh(
-      new THREE.BoxGeometry(8, 3, 2.4),
-      new THREE.MeshStandardMaterial({ color: 0x3a4754, roughness: 0.8 })
-    );
-    this.jetbridge.position.set(-11, 2.2, STOP_LINE_Z + 1);
+  // 背景：航廈、空橋、燈柱、遠景天際線（夜間機坪）
+  _buildBackground() {
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x1a2a3a, roughness: 0.3, metalness: 0.2, emissive: 0x14202c });
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x2b333d, roughness: 0.9 });
+    const litMat = new THREE.MeshStandardMaterial({ color: 0xffe39a, emissive: 0xffce6a, emissiveIntensity: 0.6 });
+
+    // 航廈主體（在停止線後方，飛機機鼻朝向它）
+    const terminal = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(120, 14, 16), wallMat);
+    body.position.set(0, 7, -28);
+    terminal.add(body);
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(118, 8, 0.5), glassMat);
+    glass.position.set(0, 7, -20);
+    terminal.add(glass);
+    // 航廈窗格亮點
+    for (let x = -54; x <= 54; x += 6) {
+      const w = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.2, 0.6), litMat);
+      w.position.set(x, 8.5, -19.7);
+      terminal.add(w);
+    }
+    // 屋頂女兒牆
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(122, 1.5, 18), wallMat);
+    roof.position.set(0, 14.5, -28);
+    terminal.add(roof);
+    this.scene.add(terminal);
+
+    // 空橋：自航廈(後方)架高、斜向伸到飛機左側機門位置（位於 -X，畫面右側）
+    this.jetbridge = new THREE.Group();
+    const rotunda = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 5, 12), wallMat);
+    rotunda.position.set(-22, 3.5, 0);
+    this.jetbridge.add(rotunda);
+    const tunnel = new THREE.Mesh(new THREE.BoxGeometry(15, 2.3, 2.3), glassMat);
+    tunnel.position.set(-13, 4.2, 14);
+    tunnel.rotation.y = -0.7;
+    this.jetbridge.add(tunnel);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(2.8, 2.6, 2.4), wallMat);
+    cab.position.set(-6, 4.2, 22);
+    this.jetbridge.add(cab);
+    for (const [cx, cz] of [[-20, 4], [-12, 13]]) { // 支撐柱
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 4, 8), wallMat);
+      col.position.set(cx, 2, cz);
+      this.jetbridge.add(col);
+    }
     this.scene.add(this.jetbridge);
+
+    // 機坪照明燈柱
+    for (const [px, pz] of [[-40, 5], [40, 5], [-40, 50], [40, 50]]) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 16, 8), wallMat);
+      pole.position.set(px, 8, pz);
+      this.scene.add(pole);
+      const lamp = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.5, 1.2), litMat);
+      lamp.position.set(px + (px < 0 ? 1 : -1), 16, pz);
+      this.scene.add(lamp);
+    }
+
+    // 遠景天際線（建築剪影 + 塔台）：位於滑行道後方遠處(+Z)，即遊玩視角看出去的地平線
+    const farMat = new THREE.MeshStandardMaterial({ color: 0x161d26 });
+    for (let i = 0; i < 26; i++) {
+      const w = 9 + ((i * 37) % 11);
+      const h = 14 + ((i * 53) % 26);
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, 7), farMat);
+      b.position.set(-180 + i * 14, h / 2, 205 + ((i * 29) % 26));
+      this.scene.add(b);
+    }
+    const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 2.2, 36, 10), farMat);
+    tower.position.set(-55, 18, 200);
+    this.scene.add(tower);
+    const towerTop = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 2.2, 4, 10), glassMat);
+    towerTop.position.set(-55, 37, 200);
+    this.scene.add(towerTop);
+
+    // 夜空星點（散布在 +Z 遠方高空）
+    const starGeo = new THREE.BufferGeometry();
+    const pts = [];
+    for (let i = 0; i < 240; i++) {
+      pts.push(-200 + ((i * 53) % 400), 50 + ((i * 13) % 110), 120 + ((i * 7) % 160));
+    }
+    starGeo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x9fb6c8, size: 0.9 }));
+    this.scene.add(stars);
   }
 
   // 彎曲導入線：自滑行道(side*18, TAXIWAY_Z) 平滑彎入中心線(0, junctionZ)
@@ -327,6 +414,36 @@ export class GameScene {
     shoulder.userData.elbow.rotation.set(ex, 0, 0);
   }
 
+  // 由 MediaPipe 骨架即時驅動化身雙臂關節（連續鏡像玩家動作，非固定姿勢）。
+  // 第三人稱看背面 → 鏡射：化身右臂(armR,+X) 跟玩家左臂、化身左臂(armL,-X) 跟玩家右臂。
+  setMarshallerFromLandmarks(lm) {
+    if (!this.armL || !this.armR || !lm) return;
+    this._poseArmFromLm(this.armR, lm[11], lm[13], lm[15]); // 玩家左肩/肘/腕
+    this._poseArmFromLm(this.armL, lm[12], lm[14], lm[16]); // 玩家右肩/肘/腕
+  }
+
+  _poseArmFromLm(arm, s, e, w) {
+    if (!s || !e || !w) return;
+    // image 座標 y 向下；atan2(dx, dy) → 手臂下垂=0、上舉=±π、外展=±π/2
+    const angUp = Math.atan2(e.x - s.x, e.y - s.y);
+    let angEl = Math.atan2(w.x - e.x, w.y - e.y) - angUp;
+    while (angEl > Math.PI) angEl -= Math.PI * 2;
+    while (angEl < -Math.PI) angEl += Math.PI * 2;
+    const u = arm.userData;
+    u.sz = this._approachAngle(u.sz ?? 0, angUp, 0.4);
+    u.ez = this._approachAngle(u.ez ?? 0, angEl, 0.4);
+    arm.rotation.set(0, 0, u.sz);
+    arm.userData.elbow.rotation.set(0, 0, u.ez);
+  }
+
+  // 角度平滑逼近，處理 ±π 環繞避免抖動翻轉
+  _approachAngle(cur, target, k) {
+    let t = target;
+    while (t - cur > Math.PI) t -= Math.PI * 2;
+    while (t - cur < -Math.PI) t += Math.PI * 2;
+    return cur + (t - cur) * k;
+  }
+
   // 依手勢擺出化身手臂姿勢（含肘關節）。第三人稱看背面，左右已鏡射。
   setMarshallerPose(gesture) {
     const L = this.armL, R = this.armR;
@@ -360,14 +477,14 @@ export class GameScene {
   }
 
   _buildNPCs() {
-    // Marshaller（玩家化身）站原點前方一點，面向來機(+Z)
+    // Marshaller（玩家化身）站在停止線前方更遠處、面向來機(+Z)，讓駕駛清楚看見
     this.marshaller = this._buildMarshaller(0xffcc33);
-    this.marshaller.position.set(0, 0, 2);
+    this.marshaller.position.set(0, 0, -8);
     this.scene.add(this.marshaller);
 
     // Chockman 在停止線旁
     this.chockman = this._personMarker(0x38d66b);
-    this.chockman.position.set(3, 0, STOP_LINE_Z);
+    this.chockman.position.set(4, 0, STOP_LINE_Z);
     this.scene.add(this.chockman);
 
     // 兩位 Wing Walker：固定站在翼尖旋轉半徑的左右淨空邊界（不隨飛機移動），
@@ -380,15 +497,13 @@ export class GameScene {
     this.wingR.position.set(CLEAR, 0, guardZ);
     this.scene.add(this.wingL, this.wingR);
 
-    // 翼尖淨空邊界（左右虛線，標示禁入區）
-    const clearMat = new THREE.MeshBasicMaterial({ color: 0xff8a3d });
+    // Apron safety line（紅色實線）：翼尖旋轉半徑的禁入邊界，標準為紅色實線
+    const safetyMat = new THREE.MeshBasicMaterial({ color: 0xff5468 });
     for (const sx of [-CLEAR, CLEAR]) {
-      for (let z = STOP_LINE_Z; z <= TAXIWAY_Z - 10; z += 5) {
-        const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 2), clearMat);
-        dash.rotation.x = -Math.PI / 2;
-        dash.position.set(sx, 0.015, z);
-        this.scene.add(dash);
-      }
+      const line = new THREE.Mesh(new THREE.PlaneGeometry(0.5, TAXIWAY_Z - 10 - STOP_LINE_Z), safetyMat);
+      line.rotation.x = -Math.PI / 2;
+      line.position.set(sx, 0.015, (STOP_LINE_Z + TAXIWAY_Z - 10) / 2);
+      this.scene.add(line);
     }
   }
 
