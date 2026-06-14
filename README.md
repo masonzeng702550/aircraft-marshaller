@@ -48,3 +48,6 @@ src/
   scene.js     Three.js 場景、雙相機、NPC、停機位標線
   style.css    HUD / 啟動畫面樣式
 ```
+
+## Credits（模型授權）
+- 飛機模型："**Boeing 787-8**" by **rocket0314** — [Sketchfab](https://sketchfab.com/3d-models/boeing-787-8-22a06131abdf4158a81f9ad2ddfde5b9)，授權 [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/)。
