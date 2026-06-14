@@ -721,64 +721,84 @@ export class GameScene {
     return grp;
   }
 
-  // 人型骨架 + 反光背心。color = 背心顏色(高彩度高 emissive → 在任何光線下都亮，呈反光感)。
+  // 擬真地勤人形：膚色有肉的四肢 + 衣褲 + 反光背心 + 安全帽 + 抗噪耳機。
+  // color = 反光背心/帽顏色(高 emissive → 反光感)，用來區分角色。
   _personMarker(color) {
     const grp = new THREE.Group();
-    const bone = new THREE.MeshStandardMaterial({ color: 0xe9e6da, roughness: 0.6 }); // 骨頭白
-    const vestMat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.65, roughness: 0.4 });
-    const stripe = new THREE.MeshStandardMaterial({ color: 0xf5f7fa, emissive: 0xd6e2ee, emissiveIntensity: 0.9, roughness: 0.2, metalness: 0.4 }); // 反光銀條
-    // 骨盆 → 脊椎 → 頭骨
-    const pelvis = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 0.2, 8), bone);
-    pelvis.position.y = 0.92; grp.add(pelvis);
-    const spine = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.6, 6), bone);
-    spine.position.y = 1.28; grp.add(spine);
-    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 12), bone);
-    skull.position.y = 1.78; grp.add(skull);
-    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.1, 0.16), bone);
-    jaw.position.y = 1.64; grp.add(jaw);
-    // 反光背心(覆蓋軀幹的桶狀) + 兩道水平 + 兩道垂直反光條
-    const vest = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.25, 0.62, 12, 1, true), vestMat);
+    const skin = new THREE.MeshStandardMaterial({ color: 0xe0a878, roughness: 0.75 });
+    const shirt = new THREE.MeshStandardMaterial({ color: 0x42525f, roughness: 0.85 });
+    const pants = new THREE.MeshStandardMaterial({ color: 0x2b2f37, roughness: 0.85 });
+    const ear = new THREE.MeshStandardMaterial({ color: 0x1d2128, roughness: 0.5 });
+    const vestMat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.55, roughness: 0.45 });
+    const stripe = new THREE.MeshStandardMaterial({ color: 0xeef3f8, emissive: 0xc8d6e4, emissiveIntensity: 0.85, roughness: 0.25, metalness: 0.4 });
+    // 腿(膚色有肉的大腿/小腿 + 鞋) + 短褲
+    for (const lx of [-0.13, 0.13]) {
+      const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 0.38, 5, 10), skin);
+      thigh.position.set(lx, 0.6, 0); grp.add(thigh);
+      const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.4, 5, 10), skin);
+      shin.position.set(lx, 0.2, 0); grp.add(shin);
+      const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.11, 0.3), pants);
+      shoe.position.set(lx, 0.02, 0.06); grp.add(shoe);
+    }
+    const shorts = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.24, 0.34, 12), pants);
+    shorts.position.y = 0.86; grp.add(shorts);
+    // 軀幹襯衫
+    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.23, 0.46, 6, 12), shirt);
+    torso.position.y = 1.28; grp.add(torso);
+    // 反光背心(套在襯衫外) + 兩道水平 + 兩道垂直反光條
+    const vest = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.26, 0.56, 14, 1, true), vestMat);
     vest.position.y = 1.3; grp.add(vest);
-    for (const sy of [1.16, 1.44]) {
-      const st = new THREE.Mesh(new THREE.CylinderGeometry(0.275, 0.275, 0.07, 12, 1, true), stripe);
+    for (const sy of [1.18, 1.42]) {
+      const st = new THREE.Mesh(new THREE.CylinderGeometry(0.275, 0.275, 0.06, 14, 1, true), stripe);
       st.position.y = sy; grp.add(st);
     }
-    for (const sx of [-0.11, 0.11]) {
-      const v = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.56, 0.02), stripe);
+    for (const sx of [-0.1, 0.1]) {
+      const v = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.5, 0.02), stripe);
       v.position.set(sx, 1.3, 0.255); grp.add(v);
     }
-    // 兩腿(大腿+小腿細骨)
-    for (const lx of [-0.1, 0.1]) {
-      const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.055, 0.46, 6), bone);
-      thigh.position.set(lx, 0.64, 0); grp.add(thigh);
-      const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.46, 6), bone);
-      shin.position.set(lx, 0.24, 0); grp.add(shin);
-      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.24), bone);
-      foot.position.set(lx, 0.03, 0.06); grp.add(foot);
+    // 脖子 + 橢圓頭(非球) + 安全帽 + 抗噪耳機(兩側耳罩 + 頭帶)
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.12, 8), skin);
+    neck.position.y = 1.62; grp.add(neck);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 18, 16), skin);
+    head.scale.set(0.92, 1.14, 1.0); head.position.y = 1.83; grp.add(head); // 拉長成頭型
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.08, 8), skin);
+    nose.rotation.x = Math.PI / 2; nose.position.set(0, 1.82, 0.2); grp.add(nose);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.21, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), vestMat);
+    cap.position.y = 1.9; grp.add(cap);
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.02, 12, 1, false, -Math.PI / 2, Math.PI), vestMat);
+    brim.position.set(0, 1.9, 0.18); grp.add(brim);
+    for (const ex of [-1, 1]) {
+      const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.07, 14), ear);
+      cup.rotation.z = Math.PI / 2; cup.position.set(ex * 0.21, 1.82, 0); grp.add(cup);
     }
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.21, 0.028, 8, 22, Math.PI), ear);
+    band.position.y = 1.82; grp.add(band); // 半圈頭帶,自左耳罩跨頂到右耳罩
     return grp;
   }
 
   // 有關節的手臂：肩 pivot → 上臂 → 肘 pivot → 前臂 + 指揮棒。
   // 回傳肩 pivot，肘 pivot 存於 userData.elbow。
   _makeArm() {
-    const bone = new THREE.MeshStandardMaterial({ color: 0xe9e6da, roughness: 0.6 }); // 骨頭白
+    const skin = new THREE.MeshStandardMaterial({ color: 0xe0a878, roughness: 0.75 }); // 膚色
+    const sleeve = new THREE.MeshStandardMaterial({ color: 0x42525f, roughness: 0.85 }); // 短袖
     const wandMat = new THREE.MeshStandardMaterial({ color: 0xff7a1a, emissive: 0xff5a00, emissiveIntensity: 0.75 }); // 發光指揮棒
-    const cuff = new THREE.MeshStandardMaterial({ color: 0xf5f7fa, emissive: 0xd6e2ee, emissiveIntensity: 0.9, roughness: 0.2, metalness: 0.4 }); // 反光袖環
     const shoulder = new THREE.Group();
-    const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.46, 6), bone);
+    const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.36, 4, 10), skin); // 有肉的上臂
     upper.position.y = -0.26;
     shoulder.add(upper);
+    const slv = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.08, 0.18, 12), sleeve); // 短袖蓋住上臂頂
+    slv.position.y = -0.12;
+    shoulder.add(slv);
     const elbow = new THREE.Group();
     elbow.position.y = -0.5; // 上臂末端（肘）
-    const fore = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.04, 0.4, 6), bone);
+    const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.34, 4, 10), skin); // 有肉的前臂
     fore.position.y = -0.22;
     elbow.add(fore);
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.06, 8), cuff); // 反光袖環
-    band.position.y = -0.4;
-    elbow.add(band);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 10), skin); // 手
+    hand.position.y = -0.44;
+    elbow.add(hand);
     const wand = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.44, 8), wandMat);
-    wand.position.y = -0.62;
+    wand.position.y = -0.64;
     elbow.add(wand);
     shoulder.add(elbow);
     shoulder.userData.elbow = elbow;
