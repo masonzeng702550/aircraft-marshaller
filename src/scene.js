@@ -377,39 +377,44 @@ export class GameScene {
           remove.forEach((o) => o.parent && o.parent.remove(o));
           holder.updateMatrixWorld(true);
         }
-        // 量測 → 縮放到指定機身長
+        // 量測 → 縮放到指定機身長，並置中(x,z)+概略貼地(y)
         const size = new THREE.Vector3();
         new THREE.Box3().setFromObject(holder).getSize(size);
         holder.scale.setScalar(targetLen / (Math.max(size.x, size.z) || 1));
         holder.updateMatrixWorld(true);
-        // 置中(x,z) + 以「輪子最低點」貼地(y)，避免機身其他部位較低造成整機浮空
         const box2 = new THREE.Box3().setFromObject(holder);
         const c = box2.getCenter(new THREE.Vector3());
-        let wheelBottom = Infinity;
-        holder.traverse((o) => {
-          if (!o.isMesh || !o.geometry) return;
-          o.geometry.computeBoundingBox();
-          const ld = new THREE.Vector3(); o.geometry.boundingBox.getSize(ld);
-          const d = [ld.x, ld.y, ld.z].sort((a, b) => a - b);
-          if (!(d[1] > 0.65 * d[2] && d[0] < 0.6 * d[2])) return; // 非圓形
-          const b = new THREE.Box3().setFromObject(o);
-          const s = new THREE.Vector3(); b.getSize(s);
-          const ctr = new THREE.Vector3(); b.getCenter(ctr);
-          if (ctr.y < 0.3 * targetLen && Math.max(s.x, s.y, s.z) < 0.16 * targetLen) {
-            wheelBottom = Math.min(wheelBottom, b.min.y);
-          }
-        });
-        const groundY = isFinite(wheelBottom) ? wheelBottom : box2.min.y;
-        holder.position.set(-c.x, -groundY, -c.z);
+        holder.position.set(-c.x, -box2.min.y, -c.z);
 
-        // 換掉現有機體
+        // 先把模型掛上場景(確保一定顯示)，再做後處理；任何後處理失敗都不影響模型顯示。
         while (this.aircraftGroup.children.length) {
           this.aircraftGroup.remove(this.aircraftGroup.children[0]);
         }
         this.aircraftGroup.add(holder);
-        // 重要：貼地位移 + 重新掛載後，先更新世界矩陣，否則下面以 setFromObject/worldToLocal
-        // 計算鼻輪 pivot 會用到舊矩陣，導致轉向軸算錯、鼻輪沿大弧線飄走。
         this.aircraftGroup.updateMatrixWorld(true);
+
+        // 精修貼地：以輪子最低點為準(失敗則沿用概略貼地)
+        try {
+          let wheelBottom = Infinity;
+          holder.traverse((o) => {
+            if (!o.isMesh || !o.geometry) return;
+            o.geometry.computeBoundingBox();
+            const ld = new THREE.Vector3(); o.geometry.boundingBox.getSize(ld);
+            const d = [ld.x, ld.y, ld.z].sort((a, b) => a - b);
+            if (!(d[1] > 0.65 * d[2] && d[0] < 0.6 * d[2])) return;
+            const b = new THREE.Box3().setFromObject(o);
+            const s = new THREE.Vector3(); b.getSize(s);
+            const ctr = new THREE.Vector3(); b.getCenter(ctr);
+            if (ctr.y < 0.3 * targetLen && Math.max(s.x, s.y, s.z) < 0.16 * targetLen) {
+              wheelBottom = Math.min(wheelBottom, b.min.y);
+            }
+          });
+          if (isFinite(wheelBottom)) {
+            holder.position.y += -wheelBottom; // 將輪子降到 y=0
+            this.aircraftGroup.updateMatrixWorld(true);
+          }
+        } catch (e) { console.warn('貼地精修失敗：', e); }
+
         this._setupNoseSteer(holder, targetLen);
         this._setupSpinners(holder, targetLen);
       },
