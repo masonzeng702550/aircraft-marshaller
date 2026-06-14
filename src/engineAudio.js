@@ -55,6 +55,13 @@ export class EngineAudio {
     this.started = true;
   }
 
+  // 分頁切到背景時暫停(否則 Web Audio 會在背景持續發聲)，回前景再恢復
+  setActive(on) {
+    if (!this.ctx) return;
+    if (on) { if (this.ctx.state === 'suspended') this.ctx.resume(); }
+    else { if (this.ctx.state === 'running') this.ctx.suspend(); }
+  }
+
   setRPM(rpm, spd = 0) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime, k = 0.3;
