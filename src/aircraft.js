@@ -23,8 +23,8 @@ export const NOSE_OFFSET = 22;
 export const AIRCRAFT_TYPES = {
   // B787-9：長 63m、翼展 60m。鼻輪最大 40°、軸距~24 → 迴轉半徑 R≈24/tan40°≈29m(平緩圓弧、有慣性)。
   B787: { label: '787', maxSpeed: 11 * KNOT, idle: 5 * KNOT, standSpeed: 4 * KNOT, accel: 1.2, brake: 1.8, steerDeg: 40, wheelbase: 24, wingspan: 60 },
-  // B777-300ER：更長更大(74m/65m)、軸距~31 → 鼻輪最大 34°、R≈31/tan34°≈46m(更大更平緩的圓弧)。
-  B777: { label: '777', maxSpeed: 10 * KNOT, idle: 4.5 * KNOT, standSpeed: 3.5 * KNOT, accel: 1.0, brake: 1.5, steerDeg: 34, wheelbase: 31, wingspan: 65 },
+  // B777-300ER：軸距~31 → 鼻輪最大 44°、R≈31/tan44°≈32m(原 46m 弧度太小/太直，加大轉彎曲率)。
+  B777: { label: '777', maxSpeed: 10 * KNOT, idle: 4.5 * KNOT, standSpeed: 3.5 * KNOT, accel: 1.0, brake: 1.5, steerDeg: 44, wheelbase: 31, wingspan: 65 },
 };
 
 export class Aircraft {
