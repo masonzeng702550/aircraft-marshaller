@@ -161,10 +161,15 @@ export class Aircraft {
 
     // 機身俯仰(剎車前傾慣性)：減速度驅動的彈簧-阻尼系統。
     // 放在 stopped 區塊外 → 即使剛停妥仍持續更新，讓機鼻「向前傾一下」後彈回水平。
+    // 僅在「最後對準停止線、減速煞停」時才前傾；轉彎中與一般滑行不前傾。
     const decel = (this._prevSpeed - this.speed) / Math.max(dt, 1e-4); // 正=減速中
     this._prevSpeed = this.speed;
-    const k = 40, c = 8, g = 0.7; // 彈簧勁度/阻尼/減速驅動增益
-    this.pitchVel += (-k * this.pitch - c * this.pitchVel - g * decel) * dt; // 減速→驅動機鼻向下(負)
+    const k = 40, c = 8, g0 = 0.7; // 彈簧勁度/阻尼/減速驅動增益
+    const brakingToStop = this.headingError() < 0.4 && Math.abs(this.x) < 6 &&
+      this.distanceToStopLine() < 16 &&
+      (this.command === GESTURES.STOP || this.command === GESTURES.SLOW);
+    const drive = brakingToStop ? -g0 * Math.max(0, decel) : 0; // 只取減速分量、限定停止線前
+    this.pitchVel += (-k * this.pitch - c * this.pitchVel + drive) * dt; // 減速→驅動機鼻向下(負)
     this.pitch += this.pitchVel * dt;
     this.pitch = Math.max(-0.07, Math.min(0.04, this.pitch));
   }
