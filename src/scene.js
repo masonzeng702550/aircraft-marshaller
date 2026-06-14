@@ -451,15 +451,18 @@ export class GameScene {
         axisSrc = tops[0];
       }
       if (!tops.length) return;
-      // 轉向軸 (x,z) 取自鼻輪本身；y 取整組中心
-      const aCtr = new THREE.Box3().setFromObject(axisSrc || tops[0]).getCenter(new THREE.Vector3());
-      const gBox = new THREE.Box3(); tops.forEach((p) => gBox.expandByObject(p));
+      // 只旋轉「輪子」本身，不旋轉支柱/連桿/艙門(否則細長件會跟著甩動)
+      let steerParts = tops.filter((o) => /wheel|tire/i.test(o.name));
+      if (!steerParts.length) steerParts = tops; // 幾何偵測(777)抓到的本來就是輪子
+      // 轉向軸 (x,z) 取自鼻輪本身；y 取輪子群中心
+      const aCtr = new THREE.Box3().setFromObject(axisSrc || steerParts[0]).getCenter(new THREE.Vector3());
+      const gBox = new THREE.Box3(); steerParts.forEach((p) => gBox.expandByObject(p));
       const gCtr = gBox.getCenter(new THREE.Vector3());
       const pivot = new THREE.Group();
       pivot.position.copy(holder.worldToLocal(new THREE.Vector3(aCtr.x, gCtr.y, aCtr.z)));
       holder.add(pivot);
       pivot.updateMatrixWorld(true); // attach 依賴 pivot 的世界矩陣
-      tops.forEach((p) => pivot.attach(p)); // attach 保留世界座標 → 繞鼻輪垂直軸原地轉
+      steerParts.forEach((p) => pivot.attach(p)); // 只把輪子掛進 pivot → 繞鼻輪垂直軸原地轉
       this.noseGear = pivot;
     } catch (e) {
       console.warn('鼻輪轉向設定失敗：', e);
