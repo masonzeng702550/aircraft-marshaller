@@ -9,8 +9,9 @@ import { GESTURES } from './gesture.js';
 // 真實 glTF 機型（放在 public/ 下）。yaw 使機鼻朝 -Z；len 為縮放後機身長(單位)。
 // 模型授權 CC-BY-4.0："Boeing 787-8" by rocket0314、"Boeing 777-300ER" by hakai315 (Sketchfab)
 export const AIRCRAFT_MODELS = {
-  B787: { file: 'models/787/scene.gltf', yaw: Math.PI, len: 46, type: 'B787', label: '787' },
-  B777: { file: 'models/777/scene.gltf', yaw: -Math.PI / 2, len: 52, type: 'B777', label: '777' },
+  // sceneryRatio：移除 footprint 大於「整體×此比例」的網格(去除打包的跑道/地面)；0 = 不過濾。
+  B787: { file: 'models/787/scene.gltf', yaw: Math.PI, len: 46, sceneryRatio: 0.45, type: 'B787', label: '787' },
+  B777: { file: 'models/777/scene.gltf', yaw: -Math.PI / 2, len: 52, sceneryRatio: 0, type: 'B777', label: '777' },
 };
 const DEFAULT_MODEL = 'B787';
 
@@ -347,11 +348,11 @@ export class GameScene {
   // 依機型 key 載入對應 glTF 模型
   loadAircraft(key) {
     const m = AIRCRAFT_MODELS[key];
-    if (m) this.setAircraftModel(import.meta.env.BASE_URL + m.file, m.yaw, m.len);
+    if (m) this.setAircraftModel(import.meta.env.BASE_URL + m.file, m.yaw, m.len, m.sceneryRatio);
   }
 
   // 載入 glTF 飛機模型，替換現有機體（去場景、旋轉定向、置中、貼地、縮放）。
-  setAircraftModel(url, yaw = 0, targetLen = 46) {
+  setAircraftModel(url, yaw = 0, targetLen = 46, sceneryRatio = 0) {
     new GLTFLoader().load(
       url,
       (gltf) => {
@@ -359,20 +360,23 @@ export class GameScene {
         holder.add(gltf.scene);
         holder.rotation.y = yaw;
         holder.updateMatrixWorld(true);
-        // 這類 Sketchfab 模型常把跑道/地面/建物一起打包 → 移除過大的場景網格，只留飛機
-        const full = new THREE.Vector3();
-        new THREE.Box3().setFromObject(holder).getSize(full);
-        const limit = 0.45 * Math.max(full.x, full.z);
-        const remove = [];
-        holder.traverse((o) => {
-          if (o.isMesh) {
-            const s = new THREE.Vector3();
-            new THREE.Box3().setFromObject(o).getSize(s);
-            if (Math.max(s.x, s.y, s.z) > limit) remove.push(o);
-          }
-        });
-        remove.forEach((o) => o.parent && o.parent.remove(o));
-        holder.updateMatrixWorld(true);
+        // 部分 Sketchfab 模型把跑道/地面一起打包 → 移除 footprint 遠大於飛機的網格。
+        // 各機型以 sceneryRatio 控制(0=不過濾)，因為 787 含大型場景、777 幾乎只有飛機本體。
+        if (sceneryRatio > 0) {
+          const full = new THREE.Vector3();
+          new THREE.Box3().setFromObject(holder).getSize(full);
+          const limit = sceneryRatio * Math.max(full.x, full.z);
+          const remove = [];
+          holder.traverse((o) => {
+            if (o.isMesh) {
+              const s = new THREE.Vector3();
+              new THREE.Box3().setFromObject(o).getSize(s);
+              if (Math.max(s.x, s.y, s.z) > limit) remove.push(o);
+            }
+          });
+          remove.forEach((o) => o.parent && o.parent.remove(o));
+          holder.updateMatrixWorld(true);
+        }
         // 量測 → 縮放到指定機身長
         const size = new THREE.Vector3();
         new THREE.Box3().setFromObject(holder).getSize(size);
@@ -396,25 +400,28 @@ export class GameScene {
     );
   }
 
-  // 把鼻輪「輪/柱」節點收進一個位於其垂直軸的 pivot，使轉向時原地打角（不沿弧線跑）。
+  // 把鼻輪節點收進一個位於其垂直軸的 pivot，使轉向時原地打角（不沿弧線跑）。
+  // 注意：齒輪名稱常在父 Object3D 上(非 Mesh)，故比對所有節點名稱，並只取最外層相符節點。
   _setupNoseSteer(holder) {
     this.noseGear = null;
     try {
-      const parts = [];
+      const matched = [];
       holder.traverse((o) => {
-        if (o.isMesh && o.name && /front|nose|nlg/i.test(o.name) &&
-            /wheel|tire|strut|gear/i.test(o.name) && !/door|hinge|light/i.test(o.name)) {
-          parts.push(o);
+        if (o.name && /front|nose|nlg/i.test(o.name) &&
+            /wheel|tire|strut|gear/i.test(o.name) && !/door|light/i.test(o.name)) {
+          matched.push(o);
         }
       });
-      if (!parts.length) return;
+      const isAncestor = (a, o) => { for (let p = o.parent; p; p = p.parent) if (p === a) return true; return false; };
+      const tops = matched.filter((o) => !matched.some((a) => a !== o && isAncestor(a, o)));
+      if (!tops.length) return;
       const bb = new THREE.Box3();
-      parts.forEach((p) => bb.expandByObject(p));
-      const ctr = bb.getCenter(new THREE.Vector3());      // 鼻輪群中心(世界座標)
+      tops.forEach((p) => bb.expandByObject(p));
+      const ctr = bb.getCenter(new THREE.Vector3());       // 鼻輪群中心(世界座標)
       const pivot = new THREE.Group();
       pivot.position.copy(holder.worldToLocal(ctr.clone())); // 垂直轉向軸位置
       holder.add(pivot);
-      parts.forEach((p) => pivot.attach(p));               // attach 保留世界座標 → 繞此軸原地轉
+      tops.forEach((p) => pivot.attach(p));                 // attach 保留世界座標 → 繞此軸原地轉
       this.noseGear = pivot;
     } catch (e) {
       console.warn('鼻輪轉向設定失敗：', e);
