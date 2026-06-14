@@ -810,13 +810,9 @@ export class GameScene {
     this.aircraftGroup.position.set(ac.x, 0, ac.z);
     this.aircraftGroup.rotation.y = ac.heading;
 
-    // 鼻輪轉向：依轉向指令偏轉到最大轉向角(各機型不同)，平滑過渡、原地打角
-    const maxSteer = this.noseSteerMax ?? 0.6;
-    let steerTarget = 0;
-    if (ac.command === GESTURES.TURN_LEFT) steerTarget = maxSteer;
-    else if (ac.command === GESTURES.TURN_RIGHT) steerTarget = -maxSteer;
-    this._steer = (this._steer || 0) + (steerTarget - (this._steer || 0)) * 0.15;
-    if (this.noseGear) this.noseGear.rotation.y = this._steer;
+    // 鼻輪視覺打角 = 物理轉向角(飛機航向已依此角度用自行車模型轉向)。
+    // 視覺與運動同源 → 鼻輪打多少、飛機就照那個弧度轉,不再像在飄移。
+    if (this.noseGear) this.noseGear.rotation.y = ac.steerAngle ?? 0;
 
     // 輪子滾動：全部繞「機身橫向(輪軸)世界軸」統一滾動。
     // 不用各輪自己的局部薄軸(不同輪局部座標不一致 → 會各轉各的、看起來亂轉)。
