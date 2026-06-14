@@ -164,7 +164,7 @@ export class Aircraft {
     // 僅在「最後對準停止線、減速煞停」時才前傾；轉彎中與一般滑行不前傾。
     const decel = (this._prevSpeed - this.speed) / Math.max(dt, 1e-4); // 正=減速中
     this._prevSpeed = this.speed;
-    const k = 40, c = 8, g0 = 0.7; // 彈簧勁度/阻尼/減速驅動增益
+    const k = 40, c = 11, g0 = 0.35; // 彈簧勁度/阻尼(加大→少彈)/減速驅動增益(調小→前傾幅度減半)
     const brakingToStop = this.headingError() < 0.4 && Math.abs(this.x) < 6 &&
       this.distanceToStopLine() < 16 &&
       (this.command === GESTURES.STOP || this.command === GESTURES.SLOW);
