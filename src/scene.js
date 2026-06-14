@@ -50,8 +50,8 @@ export class GameScene {
     // 第三人稱：站在飛機正前方（marshaller 身後上方），看得到自己的化身指揮、
     // 也看得到飛機沿垂直滑行道從側邊滑入
     this.tpv = new THREE.PerspectiveCamera(74, aspect, 0.1, 900);
-    this.tpv.position.set(0, 10, -15);
-    this.tpv.lookAt(0, 2.5, 40);
+    this.tpv.position.set(0, 6.2, -17.5); // 站在化身後上方(過肩視角)，看得見自己的指揮員
+    this.tpv.lookAt(0, 1.4, 19);
     // 第一人稱：marshaller 視角（站位 z=-8），面向來機(+Z)
     this.fpv = new THREE.PerspectiveCamera(76, aspect, 0.1, 900);
     this.fpv.position.set(0, 3.2, -8);
