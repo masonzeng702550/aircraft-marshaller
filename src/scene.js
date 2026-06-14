@@ -625,14 +625,22 @@ export class GameScene {
         const minY = Math.min(...grouped.map((r) => r.y));
         selected = grouped.filter((r) => r.y < minY + 0.7);
       }
-      // 為每顆輪胎在「輪心」建立 pivot，反父化後繞樞軸自轉 → 純粹原地滾動
+      // 機身橫向(輪軸)在世界座標的方向 = aircraftGroup 局部 +X。
+      this.aircraftGroup.updateMatrixWorld(true);
+      const aq = new THREE.Quaternion(); this.aircraftGroup.getWorldQuaternion(aq);
+      const latWorld = new THREE.Vector3(1, 0, 0).applyQuaternion(aq);
+      // 為每顆輪胎在「輪心」建立 pivot，反父化後繞「自身局部輪軸」自轉 → 原地正確滾動。
+      // 注意：不能用 rotateOnWorldAxis(three.js 假設無旋轉父層)，pivot 在 holder(機型 yaw)+航向下
+      // 父層有旋轉，會把自轉軸算錯(777 yaw -90° → 變成繞垂直軸亂轉/橫的)。改存「局部輪軸」用 rotateOnAxis。
       for (const r of selected) {
         const pivot = new THREE.Group();
         pivot.position.copy(holder.worldToLocal(r.c.clone()));
         holder.add(pivot);
         pivot.updateMatrixWorld(true);
         pivot.attach(r.mesh);
-        this.wheels.push({ pivot, radius: r.radius });
+        const pq = new THREE.Quaternion(); pivot.getWorldQuaternion(pq);
+        const axle = latWorld.clone().applyQuaternion(pq.invert()).normalize(); // 機身橫向→pivot 局部(常數)
+        this.wheels.push({ pivot, radius: r.radius, axle });
       }
     } catch (e) {
       console.warn('輪子偵測失敗：', e);
@@ -937,12 +945,10 @@ export class GameScene {
     // 視覺與運動同源 → 鼻輪打多少、飛機就照那個弧度轉,不再像在飄移。
     if (this.noseGear) this.noseGear.rotation.y = ac.steerAngle ?? 0;
 
-    // 輪子滾動：每顆輪的 pivot(位於輪心)繞「機身橫向(輪軸)世界軸」自轉 → 原地滾動。
-    // 機身橫向世界向量 = 機身局部 +X 經 heading 旋轉 = (cos h, 0, -sin h)；
-    // 由滾動無滑動 ω = -(v/r)·lateral 推得方向(機頭朝 -Z 前進時輪子正向滾)。
+    // 輪子滾動：每顆輪的 pivot(位於輪心)繞「自身局部輪軸」自轉 → 原地正確滾動。
+    // 用 rotateOnAxis(局部軸)而非 rotateOnWorldAxis：後者假設父層無旋轉，會把 777(yaw-90°)輪軸算成橫的。
     if (this.wheels && this.wheels.length && ac.speed > 0.001) {
-      const lateral = new THREE.Vector3(Math.cos(ac.heading), 0, -Math.sin(ac.heading));
-      for (const w of this.wheels) w.pivot.rotateOnWorldAxis(lateral, -(ac.speed / 60) / w.radius);
+      for (const w of this.wheels) w.pivot.rotateOnAxis(w.axle, -(ac.speed / 60) / w.radius);
     }
 
     // 引擎轉速比例(供引擎聲)：運轉中=1，停妥關車後慢慢衰減到 0(spool-down)。
