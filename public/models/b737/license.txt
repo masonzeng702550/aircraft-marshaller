@@ -1,0 +1,11 @@
+Model Information:
+* title:	Boeing 737 MAX 8
+* source:	https://sketchfab.com/3d-models/boeing-737-max-8-380d0315b8774117a3b1820f4857e00e
+* author:	Dlourine (https://sketchfab.com/fDlruosne)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Boeing 737 MAX 8" (https://sketchfab.com/3d-models/boeing-737-max-8-380d0315b8774117a3b1820f4857e00e) by Dlourine (https://sketchfab.com/fDlruosne) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

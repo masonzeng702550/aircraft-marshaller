@@ -1,0 +1,11 @@
+Model Information:
+* title:	ATR 72-600
+* source:	https://sketchfab.com/3d-models/atr-72-600-c3be63d009f546b697f542cfc4d6f56b
+* author:	Isidor G (https://sketchfab.com/AirplaneChef)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "ATR 72-600" (https://sketchfab.com/3d-models/atr-72-600-c3be63d009f546b697f542cfc4d6f56b) by Isidor G (https://sketchfab.com/AirplaneChef) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
