@@ -27,11 +27,15 @@ const aircraft = new Aircraft('B787'); // 預設 787
 const gate = new StableGate(280);
 const engineAudio = new EngineAudio();
 
-// 分頁切到背景/離開頁面時停止引擎聲，回到前景再恢復（避免背景持續發聲）
-document.addEventListener('visibilitychange', () => engineAudio.setActive(!document.hidden));
+// 分頁切到背景/離開頁面/視窗失焦時停止引擎聲，回到前景再恢復（避免背景持續嗡嗡發聲）。
+const audioShouldPlay = () => document.hasFocus() && !document.hidden;
+document.addEventListener('visibilitychange', () => engineAudio.setActive(audioShouldPlay()));
 window.addEventListener('pagehide', () => engineAudio.setActive(false));
 window.addEventListener('blur', () => engineAudio.setActive(false));
-window.addEventListener('focus', () => engineAudio.setActive(!document.hidden));
+window.addEventListener('focus', () => engineAudio.setActive(audioShouldPlay()));
+// 後備輪詢：blur/visibilitychange 在切到其他應用程式或內嵌情境不一定觸發，
+// 而 rAF 在背景會暫停 → 用 setInterval(背景仍會觸發)每 0.5s 校正一次，確保失焦必靜音。
+setInterval(() => engineAudio.setActive(audioShouldPlay()), 500);
 
 let tracker = null;
 let useKeyboard = false;

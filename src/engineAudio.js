@@ -67,11 +67,19 @@ export class EngineAudio {
     this.started = true;
   }
 
-  // 分頁切到背景時暫停(否則 Web Audio 會在背景持續發聲)，回前景再恢復
+  // 視窗失焦/切到背景時靜音並暫停(否則 Web Audio 會在背景持續嗡嗡發聲)，回前景再恢復。
+  // 關鍵：先把總音量歸零(保證立即靜音、不依賴 suspend 的時機)，再 suspend 省 CPU。
   setActive(on) {
-    if (!this.ctx) return;
-    if (on) { if (this.ctx.state === 'suspended') this.ctx.resume(); }
-    else { if (this.ctx.state === 'running') this.ctx.suspend(); }
+    if (!this.ctx || !this.master) return;
+    if (on) {
+      if (this.ctx.state === 'suspended') this.ctx.resume(); // 音量由 setRPM 自動回升
+    } else {
+      try {
+        this.master.gain.cancelScheduledValues(this.ctx.currentTime);
+        this.master.gain.setValueAtTime(0, this.ctx.currentTime);
+      } catch (e) { /* ignore */ }
+      if (this.ctx.state === 'running') this.ctx.suspend();
+    }
   }
 
   setRPM(rpm, spd = 0) {
