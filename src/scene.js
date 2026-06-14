@@ -721,21 +721,40 @@ export class GameScene {
     return grp;
   }
 
+  // 人型骨架 + 反光背心。color = 背心顏色(高彩度高 emissive → 在任何光線下都亮，呈反光感)。
   _personMarker(color) {
     const grp = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({ color });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x2a2f36 });
-    // 軀幹 + 頭 + 兩腿（讀起來像個人）
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.8, 4, 8), mat);
-    body.position.y = 1.15;
-    grp.add(body);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.26, 14, 14), mat);
-    head.position.y = 1.85;
-    grp.add(head);
-    for (const lx of [-0.16, 0.16]) {
-      const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, 0.55, 4, 8), dark);
-      leg.position.set(lx, 0.45, 0);
-      grp.add(leg);
+    const bone = new THREE.MeshStandardMaterial({ color: 0xe9e6da, roughness: 0.6 }); // 骨頭白
+    const vestMat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.65, roughness: 0.4 });
+    const stripe = new THREE.MeshStandardMaterial({ color: 0xf5f7fa, emissive: 0xd6e2ee, emissiveIntensity: 0.9, roughness: 0.2, metalness: 0.4 }); // 反光銀條
+    // 骨盆 → 脊椎 → 頭骨
+    const pelvis = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 0.2, 8), bone);
+    pelvis.position.y = 0.92; grp.add(pelvis);
+    const spine = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.6, 6), bone);
+    spine.position.y = 1.28; grp.add(spine);
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 12), bone);
+    skull.position.y = 1.78; grp.add(skull);
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.1, 0.16), bone);
+    jaw.position.y = 1.64; grp.add(jaw);
+    // 反光背心(覆蓋軀幹的桶狀) + 兩道水平 + 兩道垂直反光條
+    const vest = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.25, 0.62, 12, 1, true), vestMat);
+    vest.position.y = 1.3; grp.add(vest);
+    for (const sy of [1.16, 1.44]) {
+      const st = new THREE.Mesh(new THREE.CylinderGeometry(0.275, 0.275, 0.07, 12, 1, true), stripe);
+      st.position.y = sy; grp.add(st);
+    }
+    for (const sx of [-0.11, 0.11]) {
+      const v = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.56, 0.02), stripe);
+      v.position.set(sx, 1.3, 0.255); grp.add(v);
+    }
+    // 兩腿(大腿+小腿細骨)
+    for (const lx of [-0.1, 0.1]) {
+      const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.055, 0.46, 6), bone);
+      thigh.position.set(lx, 0.64, 0); grp.add(thigh);
+      const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.46, 6), bone);
+      shin.position.set(lx, 0.24, 0); grp.add(shin);
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.24), bone);
+      foot.position.set(lx, 0.03, 0.06); grp.add(foot);
     }
     return grp;
   }
@@ -743,18 +762,22 @@ export class GameScene {
   // 有關節的手臂：肩 pivot → 上臂 → 肘 pivot → 前臂 + 指揮棒。
   // 回傳肩 pivot，肘 pivot 存於 userData.elbow。
   _makeArm() {
-    const skin = new THREE.MeshStandardMaterial({ color: 0xffcc33 });
-    const wandMat = new THREE.MeshStandardMaterial({ color: 0xff7a1a, emissive: 0x3a1500 });
+    const bone = new THREE.MeshStandardMaterial({ color: 0xe9e6da, roughness: 0.6 }); // 骨頭白
+    const wandMat = new THREE.MeshStandardMaterial({ color: 0xff7a1a, emissive: 0xff5a00, emissiveIntensity: 0.75 }); // 發光指揮棒
+    const cuff = new THREE.MeshStandardMaterial({ color: 0xf5f7fa, emissive: 0xd6e2ee, emissiveIntensity: 0.9, roughness: 0.2, metalness: 0.4 }); // 反光袖環
     const shoulder = new THREE.Group();
-    const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.42, 4, 8), skin);
-    upper.position.y = -0.28;
+    const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.46, 6), bone);
+    upper.position.y = -0.26;
     shoulder.add(upper);
     const elbow = new THREE.Group();
-    elbow.position.y = -0.54; // 上臂末端（肘）
-    const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.38, 4, 8), skin);
-    fore.position.y = -0.26;
+    elbow.position.y = -0.5; // 上臂末端（肘）
+    const fore = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.04, 0.4, 6), bone);
+    fore.position.y = -0.22;
     elbow.add(fore);
-    const wand = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.42, 8), wandMat);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.06, 8), cuff); // 反光袖環
+    band.position.y = -0.4;
+    elbow.add(band);
+    const wand = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.44, 8), wandMat);
     wand.position.y = -0.62;
     elbow.add(wand);
     shoulder.add(elbow);
