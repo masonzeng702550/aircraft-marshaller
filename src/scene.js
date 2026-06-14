@@ -2,6 +2,7 @@
 // 提供第三人稱(TPV)與第一人稱(FPV)兩種相機。
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { STOP_LINE_Z, TAXIWAY_Z } from './aircraft.js';
 import { GESTURES } from './gesture.js';
@@ -10,8 +11,8 @@ import { GESTURES } from './gesture.js';
 // 模型授權 CC-BY-4.0："Boeing 787-8" by rocket0314、"Boeing 777-300ER" by hakai315 (Sketchfab)
 export const AIRCRAFT_MODELS = {
   // sceneryRatio：移除 footprint 大於「整體×此比例」的網格(去除打包的跑道/地面)；0 = 不過濾。
-  B787: { file: 'models/787/scene.gltf', yaw: Math.PI, len: 46, sceneryRatio: 0.45, type: 'B787', label: '787' },
-  B777: { file: 'models/777/scene.gltf', yaw: -Math.PI / 2, len: 52, sceneryRatio: 0, type: 'B777', label: '777' },
+  B787: { file: 'models/787/787.glb', yaw: Math.PI, len: 46, sceneryRatio: 0.45, type: 'B787', label: '787' },
+  B777: { file: 'models/777/777.glb', yaw: -Math.PI / 2, len: 52, sceneryRatio: 0, type: 'B777', label: '777' },
 };
 const DEFAULT_MODEL = 'B787';
 
@@ -353,7 +354,9 @@ export class GameScene {
 
   // 載入 glTF 飛機模型，替換現有機體（去場景、旋轉定向、置中、貼地、縮放）。
   setAircraftModel(url, yaw = 0, targetLen = 46, sceneryRatio = 0) {
-    new GLTFLoader().load(
+    const loader = new GLTFLoader();
+    loader.setMeshoptDecoder(MeshoptDecoder); // 解碼 meshopt 壓縮的幾何
+    loader.load(
       url,
       (gltf) => {
         const holder = new THREE.Group();
