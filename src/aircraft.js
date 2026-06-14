@@ -25,6 +25,14 @@ export const AIRCRAFT_TYPES = {
   B787: { label: '787', maxSpeed: 11 * KNOT, idle: 5 * KNOT, standSpeed: 4 * KNOT, accel: 1.2, brake: 1.8, steerDeg: 40, wheelbase: 24, wingspan: 60 },
   // B777-300ER：軸距~31 → 鼻輪最大 44°、R≈31/tan44°≈32m(原 46m 弧度太小/太直，加大轉彎曲率)。
   B777: { label: '777', maxSpeed: 10 * KNOT, idle: 4.5 * KNOT, standSpeed: 3.5 * KNOT, accel: 1.0, brake: 1.5, steerDeg: 44, wheelbase: 31, wingspan: 65 },
+  // A350-1000：長 73.8m、翼展 64.8m，廣體 → 軸距~33、鼻輪 40°、R≈39m。
+  A350: { label: 'A350', maxSpeed: 10 * KNOT, idle: 4.5 * KNOT, standSpeed: 3.5 * KNOT, accel: 1.0, brake: 1.5, steerDeg: 40, wheelbase: 33, wingspan: 65 },
+  // B737 MAX 8：長 39.5m、翼展 35.9m，窄體 → 軸距~14、鼻輪 45°、R≈14m，較靈活。
+  B737: { label: '737', maxSpeed: 11 * KNOT, idle: 5 * KNOT, standSpeed: 4 * KNOT, accel: 1.3, brake: 1.9, steerDeg: 45, wheelbase: 14, wingspan: 36 },
+  // A320-200：長 37.6m、翼展 35.8m，窄體 → 軸距~13、鼻輪 45°、R≈13m。
+  A320: { label: 'A320', maxSpeed: 11 * KNOT, idle: 5 * KNOT, standSpeed: 4 * KNOT, accel: 1.3, brake: 1.9, steerDeg: 45, wheelbase: 13, wingspan: 36 },
+  // ATR72-600：長 27.2m、翼展 27m，區域渦槳 → 軸距~10、鼻輪 50°、R≈8m，最靈活、整體較慢。
+  ATR72: { label: 'ATR72', maxSpeed: 8 * KNOT, idle: 4.5 * KNOT, standSpeed: 3.5 * KNOT, accel: 1.3, brake: 1.8, steerDeg: 50, wheelbase: 10, wingspan: 27 },
 };
 
 export class Aircraft {

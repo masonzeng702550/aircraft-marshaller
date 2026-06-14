@@ -55,17 +55,23 @@ $('btn-fpv').addEventListener('click', () => {
   $('btn-tpv').classList.remove('active');
 });
 
-// ── 機型選擇（787 / 777）──
+// ── 機型選擇（787 / 777 / A350 / 737 / A320 / ATR72）──
+// 引擎聲：廣體(777/A350)用 GE90 低沉雄厚，其餘窄體/區域機用 GEnx。
+const ENGINE_BY_TYPE = { B777: 'GE90', A350: 'GE90' };
 function selectModel(key, btn) {
   aircraft.setType(key);
   scene.loadAircraft(key);
-  engineAudio.setEngineType(key === 'B777' ? 'GE90' : 'GEnx'); // 777=GE90、787=GEnx
+  engineAudio.setEngineType(ENGINE_BY_TYPE[key] || 'GEnx');
   aircraft.reset();
   document.querySelectorAll('#model-toggle button').forEach((b) => b.classList.remove('active'));
   btn.classList.add('active');
 }
 $('btn-787').addEventListener('click', (e) => selectModel('B787', e.currentTarget));
 $('btn-777').addEventListener('click', (e) => selectModel('B777', e.currentTarget));
+$('btn-a350').addEventListener('click', (e) => selectModel('A350', e.currentTarget));
+$('btn-b737').addEventListener('click', (e) => selectModel('B737', e.currentTarget));
+$('btn-a320').addEventListener('click', (e) => selectModel('A320', e.currentTarget));
+$('btn-atr72').addEventListener('click', (e) => selectModel('ATR72', e.currentTarget));
 
 // ── 鍵盤備援 ──
 const keyMap = {
@@ -145,7 +151,7 @@ function loop(now) {
   else scene.setMarshallerPose(raw);
   // 輪檔員依飛機位置示範「該做的手勢」，玩家照著做
   // 以鼻輪為基準判定停止（模型載入後場景會算出鼻輪相對機身中心的前向距離）
-  if (scene.noseGearOffset != null) aircraft.noseRefOffset = scene.noseGearOffset;
+  aircraft.noseRefOffset = scene.noseGearOffset; // null → aircraft.noseZ 退回 NOSE_OFFSET
   if (scene.activeStopZ != null) aircraft.stopRefZ = scene.activeStopZ; // 各機型停在自己的機型停止線
 
   const advice = aircraft.recommendedCommand();

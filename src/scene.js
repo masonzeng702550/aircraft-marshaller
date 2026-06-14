@@ -14,6 +14,10 @@ export const AIRCRAFT_MODELS = {
   // steerDeg：鼻輪最大轉向角(度)。
   B787: { file: 'models/787/787.glb', yaw: Math.PI, len: 46, sceneryRatio: 0.45, steerDeg: 70, type: 'B787', label: '787' },
   B777: { file: 'models/777/777.glb', yaw: -Math.PI / 2, len: 52, sceneryRatio: 0, steerDeg: 75, type: 'B777', label: '777' },
+  A350: { file: 'models/a350/a350.glb', yaw: -Math.PI / 2, len: 54, sceneryRatio: 0, steerDeg: 40, type: 'A350', label: 'A350' },
+  B737: { file: 'models/b737/b737.glb', yaw: -Math.PI / 2, len: 29, sceneryRatio: 0, steerDeg: 45, type: 'B737', label: '737' },
+  A320: { file: 'models/a320/a320.glb', yaw: -Math.PI / 2, len: 27, sceneryRatio: 0, steerDeg: 45, type: 'A320', label: 'A320' },
+  ATR72: { file: 'models/atr72/atr72.glb', yaw: Math.PI / 2, len: 20, sceneryRatio: 0, steerDeg: 50, type: 'ATR72', label: 'ATR72' },
 };
 const DEFAULT_MODEL = 'B787';
 
@@ -531,6 +535,7 @@ export class GameScene {
   // (A) 有具名齒輪節點(787)：以輪/胎節點的 x,z 為軸；(B) 無具名(777)：幾何抓最前端低矮小輪。
   _setupNoseSteer(holder, targetLen) {
     this.noseGear = null;
+    this.noseGearOffset = null; // 重置，避免切換到無鼻輪機型時沿用上一台的值
     try {
       holder.updateMatrixWorld(true); // 確保 setFromObject/worldToLocal 使用最新矩陣
       const isAncestor = (a, o) => { for (let p = o.parent; p; p = p.parent) if (p === a) return true; return false; };
@@ -547,19 +552,15 @@ export class GameScene {
       // (B) 幾何偵測（無具名齒輪，如 777）：只取「輪胎形狀」(圓+薄+軸水平)的最前端群，
       //     不要把支柱/連桿/艙門也抓進來(否則整組亂轉)。
       if (!tops.length) {
-        const cand = [];
-        holder.traverse((o) => {
-          if (!this._isWheelShape(o)) return;
-          const b = new THREE.Box3().setFromObject(o);
-          const s = new THREE.Vector3(); b.getSize(s);
-          const c = new THREE.Vector3(); b.getCenter(c);
-          // 用「機身座標系」的 z(機鼻恆為 -Z)判定前後，避免載入時 spawn 轉向造成抓錯邊
-          const bodyZ = this.aircraftGroup.worldToLocal(c.clone()).z;
-          if (Math.max(s.x, s.y, s.z) < 0.08 * targetLen && c.y < 0.15 * targetLen) cand.push({ o, z: bodyZ });
-        });
+        // 幾何偵測：底層輪胎中、靠近中心線(鼻輪在 x≈0)、機身座標 z 最小(最前端)那群 = 鼻輪。
+        const cand = this._wheelCandidates(holder, targetLen);
         if (!cand.length) return;
-        const minZ = Math.min(...cand.map((w) => w.z));
-        tops = cand.filter((w) => w.z < minZ + 0.06 * targetLen).map((w) => w.o);
+        const local = cand.map((r) => { const p = this.aircraftGroup.worldToLocal(r.c.clone()); return { o: r.mesh, x: p.x, z: p.z }; });
+        // 鼻輪必在中心線(x≈0)且位於前段(z<0=機鼻側)。找不到合格中心鼻輪就不設轉向(避免亂轉翼上雜散圓盤)。
+        const central = local.filter((w) => Math.abs(w.x) < 0.08 * targetLen && w.z < 0);
+        if (!central.length) return;
+        const minZ = Math.min(...central.map((w) => w.z));
+        tops = central.filter((w) => w.z < minZ + 0.06 * targetLen).map((w) => w.o);
         axisSrc = tops[0];
       }
       if (!tops.length) return;
@@ -599,32 +600,37 @@ export class GameScene {
     return maxD > 0 && dims[1][1] > 0.8 * maxD && dims[0][1] < 0.5 * maxD && dims[0][0] !== 'y';
   }
 
-  // 偵測可滾動的輪胎：圓形 + 貼地 + 非極小 + 成群且取起落架最底層(=真正輪胎)。
-  // 每顆輪胎包進「以輪心為樞軸」的 pivot 再自轉 → 保證原地滾動(不繞偏心原點亂甩，修 777 主輪)。
+  // 找出「起落架輪胎」候選：以世界包圍盒判形(兩大維接近=圓 + 一薄維=輪軸 + 薄軸水平) + 小尺寸，
+  // 再取所有候選中「最底層」那一帶(以候選自身最低 y 為基準，避免被輔助曲線/離散網格污染整機包圍盒)。
+  // 回傳 [{ mesh, c(世界輪心), maxD }]。各模型輪子帶節點旋轉/縮放也抓得到，且不要求成群(左右各一也算)。
+  _wheelCandidates(holder, targetLen) {
+    holder.updateMatrixWorld(true);
+    const cand = [];
+    holder.traverse((o) => {
+      if (!o.isMesh || !o.geometry) return;
+      const b = new THREE.Box3().setFromObject(o);
+      const ws = new THREE.Vector3(); b.getSize(ws);
+      const dims = [['x', ws.x], ['y', ws.y], ['z', ws.z]].sort((a, c) => a[1] - c[1]);
+      const maxD = dims[2][1];
+      if (!(maxD > 0 && dims[1][1] > 0.7 * maxD && dims[0][1] < 0.6 * maxD && dims[0][0] !== 'y')) return;
+      if (maxD > 0.07 * targetLen || maxD < 0.004 * targetLen) return;
+      const c = new THREE.Vector3(); b.getCenter(c);
+      // 起落架在機腹下方(機身座標 |x| 小)，排除翼上/引擎雜散圓盤
+      if (Math.abs(this.aircraftGroup.worldToLocal(c.clone()).x) > 0.16 * targetLen) return;
+      cand.push({ mesh: o, c, maxD });
+    });
+    if (!cand.length) return [];
+    const minY = Math.min(...cand.map((r) => r.c.y));
+    const band = Math.min(2.2, Math.max(0.8, 0.06 * targetLen)); // 底部高度帶(納入鼻輪+主輪，排除引擎扇/尾翼圓盤)
+    return cand.filter((r) => r.c.y < minY + band);
+  }
+
+  // 偵測可滾動的輪胎並各自包進「以輪心為樞軸」的 pivot → 原地滾動。
   _setupWheels(holder, targetLen) {
     this.wheels = [];
     try {
-      holder.updateMatrixWorld(true);
       const underNose = (o) => { for (let p = o.parent; p; p = p.parent) if (p === this.noseGear) return true; return false; };
-      const round = [];
-      holder.traverse((o) => {
-        if (!this._isWheelShape(o)) return;
-        if (this.noseGear && underNose(o)) return; // 鼻輪由轉向 pivot 處理，避免重複/反父化衝突
-        const wb = new THREE.Box3().setFromObject(o);
-        const ws = new THREE.Vector3(); wb.getSize(ws);
-        const wc = new THREE.Vector3(); wb.getCenter(wc);
-        const maxW = Math.max(ws.x, ws.y, ws.z);
-        round.push({ mesh: o, radius: maxW / 2 || 0.5, maxW, x: wc.x, y: wc.y, z: wc.z, c: wc });
-      });
-      const small = round.filter((r) =>
-        r.maxW <= 0.06 * targetLen && r.maxW > 0.005 * targetLen && r.y < 0.12 * targetLen);
-      const grouped = small.filter((r) =>
-        small.filter((s) => Math.abs(s.x - r.x) < 3.5 && Math.abs(s.z - r.z) < 3.5).length >= 2);
-      let selected = [];
-      if (grouped.length) {
-        const minY = Math.min(...grouped.map((r) => r.y));
-        selected = grouped.filter((r) => r.y < minY + 0.7);
-      }
+      const cand = this._wheelCandidates(holder, targetLen).filter((r) => !(this.noseGear && underNose(r.mesh)));
       // 機身橫向(輪軸)在世界座標的方向 = aircraftGroup 局部 +X。
       this.aircraftGroup.updateMatrixWorld(true);
       const aq = new THREE.Quaternion(); this.aircraftGroup.getWorldQuaternion(aq);
@@ -632,7 +638,7 @@ export class GameScene {
       // 為每顆輪胎在「輪心」建立 pivot，反父化後繞「自身局部輪軸」自轉 → 原地正確滾動。
       // 注意：不能用 rotateOnWorldAxis(three.js 假設無旋轉父層)，pivot 在 holder(機型 yaw)+航向下
       // 父層有旋轉，會把自轉軸算錯(777 yaw -90° → 變成繞垂直軸亂轉/橫的)。改存「局部輪軸」用 rotateOnAxis。
-      for (const r of selected) {
+      for (const r of cand) {
         const pivot = new THREE.Group();
         pivot.position.copy(holder.worldToLocal(r.c.clone()));
         holder.add(pivot);
@@ -640,7 +646,7 @@ export class GameScene {
         pivot.attach(r.mesh);
         const pq = new THREE.Quaternion(); pivot.getWorldQuaternion(pq);
         const axle = latWorld.clone().applyQuaternion(pq.invert()).normalize(); // 機身橫向→pivot 局部(常數)
-        this.wheels.push({ pivot, radius: r.radius, axle });
+        this.wheels.push({ pivot, radius: r.maxD / 2 || 0.5, axle });
       }
     } catch (e) {
       console.warn('輪子偵測失敗：', e);
