@@ -499,11 +499,15 @@ export class GameScene {
         axisSrc = tops[0];
       }
       if (!tops.length) return;
-      // 只旋轉「輪子」本身，不旋轉支柱/連桿/艙門(否則細長件會跟著甩動)
-      let steerParts = tops.filter((o) => /wheel|tire/i.test(o.name));
-      if (!steerParts.length) steerParts = tops; // 幾何偵測(777)抓到的本來就是輪子
-      // 轉向軸 (x,z) 取自鼻輪本身；y 取輪子群中心
-      const aCtr = new THREE.Box3().setFromObject(axisSrc || steerParts[0]).getCenter(new THREE.Vector3());
+      // 轉向軸 (x,z) = 鼻輪本身
+      const aCtr = new THREE.Box3().setFromObject(axisSrc || tops[0]).getCenter(new THREE.Vector3());
+      // 旋轉整條鼻輪腿(輪+支柱)：取位於鼻輪垂直軸附近的零件(在 x,z 接近輪軸者一起原地轉)，
+      // 排除接到機身、位置偏移的連桿/鉸鏈(否則會沿弧線甩)。
+      let steerParts = tops.filter((o) => {
+        const c = new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3());
+        return Math.abs(c.x - aCtr.x) < 0.045 * targetLen && Math.abs(c.z - aCtr.z) < 0.07 * targetLen;
+      });
+      if (!steerParts.length) steerParts = [axisSrc || tops[0]];
       const gBox = new THREE.Box3(); steerParts.forEach((p) => gBox.expandByObject(p));
       const gCtr = gBox.getCenter(new THREE.Vector3());
       const pivot = new THREE.Group();
@@ -814,9 +818,13 @@ export class GameScene {
     this._steer = (this._steer || 0) + (steerTarget - (this._steer || 0)) * 0.15;
     if (this.noseGear) this.noseGear.rotation.y = this._steer;
 
-    // 輪子滾動：依地速繞各自輪軸旋轉
+    // 輪子滾動：全部繞「機身橫向(輪軸)世界軸」統一滾動。
+    // 不用各輪自己的局部薄軸(不同輪局部座標不一致 → 會各轉各的、看起來亂轉)。
+    // 機身橫向世界向量 = 機身局部 +X 經 heading 旋轉 = (cos h, 0, -sin h)；
+    // 由滾動無滑動 ω = -(v/r)·lateral 推得方向(機頭朝 -Z 前進時輪子正向滾)。
     if (this.wheels && this.wheels.length && ac.speed > 0.001) {
-      for (const w of this.wheels) w.mesh.rotation[w.axis] += (ac.speed / 60) / w.radius;
+      const lateral = new THREE.Vector3(Math.cos(ac.heading), 0, -Math.sin(ac.heading));
+      for (const w of this.wheels) w.mesh.rotateOnWorldAxis(lateral, -(ac.speed / 60) / w.radius);
     }
 
     // 引擎轉速比例(供引擎聲)：運轉中=1，停妥關車後慢慢衰減到 0(spool-down)。
