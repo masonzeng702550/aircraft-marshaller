@@ -472,6 +472,9 @@ export class GameScene {
       pivot.updateMatrixWorld(true); // attach 依賴 pivot 的世界矩陣
       steerParts.forEach((p) => pivot.attach(p)); // 只把輪子掛進 pivot → 繞鼻輪垂直軸原地轉
       this.noseGear = pivot;
+      // 記錄鼻輪相對機身中心的前向距離(機身座標系，機鼻 -Z)，供以鼻輪為基準判定停止
+      const ww = new THREE.Vector3(); pivot.getWorldPosition(ww);
+      this.noseGearOffset = -this.aircraftGroup.worldToLocal(ww.clone()).z;
     } catch (e) {
       console.warn('鼻輪轉向設定失敗：', e);
     }
@@ -506,9 +509,12 @@ export class GameScene {
       }
       // 輪胎：小、貼地，且附近還有其他同類(成群)→ 排除孤立的小圓件
       const small = round.filter((r) => r.maxW <= 0.06 * targetLen && r.y < 0.12 * targetLen);
-      for (const r of small) {
-        const near = small.filter((s) => Math.abs(s.x - r.x) < 3.5 && Math.abs(s.z - r.z) < 3.5).length;
-        if (near >= 2) this.wheels.push(r);
+      const grouped = small.filter((r) =>
+        small.filter((s) => Math.abs(s.x - r.x) < 3.5 && Math.abs(s.z - r.z) < 3.5).length >= 2);
+      // 只取「起落架最底部」的那層(=真正的輪胎)，排除上方的支柱/連桿/叉臂等較高零件
+      if (grouped.length) {
+        const minY = Math.min(...grouped.map((r) => r.y));
+        this.wheels = grouped.filter((r) => r.y < minY + 0.7);
       }
     } catch (e) {
       console.warn('旋轉件偵測失敗：', e);

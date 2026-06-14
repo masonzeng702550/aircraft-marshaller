@@ -133,12 +133,14 @@ export class Aircraft {
     }
   }
 
-  // 機鼻的 Z（沿機頭方向自中心點外推 NOSE_OFFSET）
+  // 停止基準點的 Z：以「鼻輪」為準(noseRefOffset，載入模型後由場景設定)，
+  // 未取得時退回機鼻尖(NOSE_OFFSET)。沿機頭方向自中心點外推。
   noseZ() {
-    return this.z - Math.cos(this.heading) * NOSE_OFFSET;
+    const off = this.noseRefOffset ?? NOSE_OFFSET;
+    return this.z - Math.cos(this.heading) * off;
   }
 
-  // 距停止線（以機鼻為準，正 = 還沒到，負 = 越線）
+  // 距停止線（以鼻輪為準，正 = 還沒到，負 = 越線）
   distanceToStopLine() {
     return this.noseZ() - STOP_LINE_Z;
   }
