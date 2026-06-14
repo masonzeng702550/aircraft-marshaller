@@ -48,6 +48,9 @@ export class Aircraft {
     // 從左端(x<0)機頭朝 +X(heading=-90°)、從右端朝 -X(heading=+90°)，即與中心線垂直、朝中心線。
     this.heading = side * (Math.PI / 2);
     this.steerAngle = 0; // 鼻輪當前打角(rad)，平滑趨近目標
+    this.pitch = 0;      // 機身俯仰(剎車前傾)，負=機鼻向下
+    this.pitchVel = 0;
+    this._prevSpeed = 0;
     this.speed = 0;
     this.command = GESTURES.NONE;
     this.stopped = false;
@@ -72,10 +75,9 @@ export class Aircraft {
 
   // dt：秒
   update(dt) {
-    if (this.stopped) return;
     const s = this.spec;
-
     const steerMax = (s.steerDeg || 34) * Math.PI / 180;
+    if (!this.stopped) {
     let targetSpeed = s.idle; // 預設自動滑行（一直在動）
     let turning = false;
     let steerTarget = 0; // 鼻輪目標打角
@@ -101,6 +103,18 @@ export class Aircraft {
         break;
       default:
         targetSpeed = s.idle; // 無指令：維持低速滑行
+    }
+
+    // 對準中心線輔助轉向：主轉彎後航向大致對齊、仍偏離中線，且玩家正下達「朝中線」的轉向 →
+    // 啟用加力自動瞄準(比例導引)：反應比手動更強更準，協助貼齊中線(玩家手勢=確認觸發)。
+    const towardCenter = this.x > 0 ? GESTURES.TURN_LEFT : GESTURES.TURN_RIGHT; // 飛機左=-X
+    if (this.headingError() < 0.45 && Math.abs(this.x) > 0.08 && this.command === towardCenter) {
+      let h = this.heading % (Math.PI * 2);
+      if (h > Math.PI) h -= Math.PI * 2; else if (h < -Math.PI) h += Math.PI * 2;
+      // 朝中線的截獲航向(夾在 ±0.3 < 對齊門檻 0.45，避免自我關閉而衝過頭)，再高增益轉至該航向
+      const captureHeading = Math.max(-0.3, Math.min(0.3, this.x * 0.2));
+      steerTarget = Math.max(-steerMax, Math.min(steerMax, (captureHeading - h) * 3)); // 高增益=加大力道
+      turning = true;
     }
 
     // 漸進限速：越接近轉彎線（中心線 x=0）越慢，離得遠才能滑快一點
@@ -143,6 +157,16 @@ export class Aircraft {
       this.stopped = true;
       this.outOfBounds = true;
     }
+    } // end if(!stopped)
+
+    // 機身俯仰(剎車前傾慣性)：減速度驅動的彈簧-阻尼系統。
+    // 放在 stopped 區塊外 → 即使剛停妥仍持續更新，讓機鼻「向前傾一下」後彈回水平。
+    const decel = (this._prevSpeed - this.speed) / Math.max(dt, 1e-4); // 正=減速中
+    this._prevSpeed = this.speed;
+    const k = 40, c = 8, g = 0.7; // 彈簧勁度/阻尼/減速驅動增益
+    this.pitchVel += (-k * this.pitch - c * this.pitchVel - g * decel) * dt; // 減速→驅動機鼻向下(負)
+    this.pitch += this.pitchVel * dt;
+    this.pitch = Math.max(-0.07, Math.min(0.04, this.pitch));
   }
 
   // 停止基準點的 Z：以「鼻輪」為準(noseRefOffset，載入模型後由場景設定)，

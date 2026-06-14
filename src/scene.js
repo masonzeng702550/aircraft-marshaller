@@ -808,7 +808,10 @@ export class GameScene {
   // 依飛機狀態更新可視物
   syncAircraft(ac) {
     this.aircraftGroup.position.set(ac.x, 0, ac.z);
+    // YXZ：先航向(yaw)再俯仰(pitch) → pitch 繞「機身橫向軸」傾(剎車前傾不會歪掉航向)
+    this.aircraftGroup.rotation.order = 'YXZ';
     this.aircraftGroup.rotation.y = ac.heading;
+    this.aircraftGroup.rotation.x = ac.pitch ?? 0; // 機身俯仰(負=機鼻向下)
 
     // 鼻輪視覺打角 = 物理轉向角(飛機航向已依此角度用自行車模型轉向)。
     // 視覺與運動同源 → 鼻輪打多少、飛機就照那個弧度轉,不再像在飄移。
