@@ -346,7 +346,6 @@ export class GameScene {
         while (this.aircraftGroup.children.length) {
           this.aircraftGroup.remove(this.aircraftGroup.children[0]);
         }
-        this.noseGear = null; // 外部模型不做鼻輪轉向
         const m = gltf.scene;
         const box = new THREE.Box3().setFromObject(m);
         const size = new THREE.Vector3();
@@ -360,6 +359,20 @@ export class GameScene {
         m.position.z -= c.z;
         m.position.y -= box2.min.y; // 起落架貼地
         this.aircraftGroup.add(m);
+
+        // 保留鼻輪轉向：優先沿用模型內的鼻輪節點，找不到則疊一組可轉向鼻輪
+        let nose = null;
+        m.traverse((o) => {
+          if (!nose && o.name && /nose|nlg|front/i.test(o.name) && /gear|wheel|strut/i.test(o.name)) nose = o;
+        });
+        if (nose) {
+          this.noseGear = nose;
+        } else {
+          const g = this._buildGear(2, 0.7);
+          g.position.set(0, 0, -13);
+          this.aircraftGroup.add(g);
+          this.noseGear = g;
+        }
       },
       undefined,
       (err) => console.warn('飛機 GLB 載入失敗，沿用程序化模型：', err)
