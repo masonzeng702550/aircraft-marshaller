@@ -1053,8 +1053,12 @@ export class GameScene {
       if (spin > 0.0005) for (const p of this.props) p.pivot.rotateOnAxis(p.axis, spin);
     }
 
-    // 引擎轉速比例(供引擎聲)：運轉中=1，停妥關車後慢慢衰減到 0(spool-down)。
-    const rpmTarget = ac.stopped ? 0 : 1;
+    // 引擎轉速比例(供引擎聲)：運轉中=1。停妥後「先怠速運轉一陣子(約5秒)才關車」，再慢慢 spool-down 到 0。
+    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    if (ac.stopped) { if (this._stopAt == null) this._stopAt = now; }
+    else { this._stopAt = null; }
+    const sinceStopSec = this._stopAt != null ? (now - this._stopAt) / 1000 : 0;
+    const rpmTarget = (ac.stopped && sinceStopSec > 5) ? 0 : 1; // 停妥 5 秒後才開始關車
     this.engineRPM = (this.engineRPM ?? 1) + (rpmTarget - (this.engineRPM ?? 1)) * 0.012;
   }
 

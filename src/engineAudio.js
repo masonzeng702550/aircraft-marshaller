@@ -68,6 +68,17 @@ export class EngineAudio {
       o.connect(this.whine); o.start(); this.whineOscs.push(o);
     });
 
+    // 螺旋槳葉片拍頻嗡鳴(鋸齒波基頻+諧波經低通 → 溫暖的渦槳「嗡嗡嗡」聲)；僅 prop:true 機型(ATR72)啟用。
+    const propLp = ctx.createBiquadFilter(); propLp.type = 'lowpass'; propLp.frequency.value = 720; propLp.Q.value = 0.7;
+    this.prop = ctx.createGain(); this.prop.gain.value = 0;
+    propLp.connect(this.prop); this.prop.connect(this.master);
+    this.propOscs = [];
+    [1, 2, 3].forEach((mult, i) => {
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 88 * mult;
+      const g = ctx.createGain(); g.gain.value = [1, 0.5, 0.28][i];
+      o.connect(g); g.connect(propLp); o.start(); this.propOscs.push(o);
+    });
+
     this.started = true;
   }
 
@@ -100,5 +111,12 @@ export class EngineAudio {
     this.roarBP.frequency.setTargetAtTime(p.roarBase + r * p.roarSpan + thrust * 120, t, k);
     const wf = p.whineBase + r * p.whineSpan; // 風扇音高隨轉速；關車降回低點
     this.whineOscs.forEach((o, i) => o.frequency.setTargetAtTime(wf * (i ? 1.005 : 1), t, k));
+    // 螺旋槳嗡鳴：僅渦槳機型(p.prop)發聲，葉片拍頻基頻隨轉速；關車隨 r→0 變慢停。
+    if (this.prop) {
+      const propOn = p.prop ? 1 : 0;
+      this.prop.gain.setTargetAtTime(0.34 * r * propOn, t, k);
+      const pf = 85 + r * 55;
+      this.propOscs.forEach((o, i) => o.frequency.setTargetAtTime(pf * (i + 1), t, k));
+    }
   }
 }
