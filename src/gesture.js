@@ -40,48 +40,40 @@ export function classifyPose(lm) {
   const lw = lm[L.L_WRIST], rw = lm[L.R_WRIST];
 
   const shoulderY = (ls.y + rs.y) / 2;
-  const midX = (ls.x + rs.x) / 2;
   const shoulderW = Math.abs(ls.x - rs.x) || 0.18; // 防 0
 
-  // image y 向下：值越小越「高」。依 ICAO 標準動作（單幀近似版）判定。
+  // image y 向下：值越小越「高」。指揮棒信號：大臂平舉、小臂在「平舉↔直舉」擺動。
   const lwAboveHead = lw.y < nose.y;
   const rwAboveHead = rw.y < nose.y;
-
-  // 各手腕狀態（person-relative；面對鏡頭時玩家左手 x 較大）
-  const up = (w) => w.y < shoulderY - shoulderW * 0.1;            // 高舉過肩（招手側）
-  const lOut = lw.x - midX;                                       // 玩家左臂外展量
-  const rOut = midX - rw.x;                                       // 玩家右臂外展量
-  const horiz = (w, out) => Math.abs(w.y - shoulderY) < shoulderW * 0.85 && out > shoulderW * 0.9;
-  const downOut = (w, out) => w.y > shoulderY + shoulderW * 1.0 && out > shoulderW * 0.5;
-
+  const up = (w) => w.y < shoulderY - shoulderW * 0.2;            // 小臂直舉→手腕明顯高於肩
+  const down = (w) => w.y > shoulderY + shoulderW * 0.55;         // 雙手下伸（減速起手式）
   const lUp = up(lw), rUp = up(rw);
-  const lHoriz = horiz(lw, lOut), rHoriz = horiz(rw, rOut);
 
-  // ── STOP：雙臂上舉過頭「且交叉成 X」才算停止 ──
-  // 一般站姿左手腕在影像右(x 較大)、右手腕在左；交叉時會對調(lw.x < rw.x)。
-  // 僅雙手舉高、未交叉，不算停止。
-  const crossedX = lw.x < rw.x - shoulderW * 0.05;
-  if (lwAboveHead && rwAboveHead && crossedX) {
+  // ── STOP：雙手都過頭「且指揮棒交叉/靠攏」(雙手交叉立刻停) ──
+  // 一般站姿左手腕在影像右(x 較大)；交叉時對調(lw.x < rw.x)，或兩腕靠很近。
+  const wristGap = Math.abs(lw.x - rw.x);
+  const crossedOrClose = lw.x < rw.x + shoulderW * 0.1 || wristGap < shoulderW * 0.5;
+  if (lwAboveHead && rwAboveHead && crossedOrClose) {
     return { gesture: GESTURES.STOP, confidence: 0.95 };
   }
 
-  // ── TURN_LEFT：右臂平舉當軸 + 左手向上招手 ──
-  if (lUp && rHoriz && !rwAboveHead) {
-    return { gesture: GESTURES.TURN_LEFT, confidence: 0.88 };
-  }
-  // ── TURN_RIGHT：左臂平舉當軸 + 右手向上招手 ──
-  if (rUp && lHoriz && !lwAboveHead) {
-    return { gesture: GESTURES.TURN_RIGHT, confidence: 0.88 };
+  // ── GO(前進)：雙手小臂都直舉(都過肩)且左右對稱(高度接近) → 與「單手高/單手平」的轉彎區分 ──
+  const symmetric = Math.abs(lw.y - rw.y) < shoulderW * 0.5;
+  if (lUp && rUp && symmetric) {
+    return { gesture: GESTURES.GO, confidence: 0.85 };
   }
 
-  // ── GO：雙手向上招手（雙手都高於肩、都在頭以下、未往兩側張開）──
-  const notWide = lOut < shoulderW * 1.1 && rOut < shoulderW * 1.1;
-  if (lUp && rUp && !lwAboveHead && !rwAboveHead && notWide) {
-    return { gesture: GESTURES.GO, confidence: 0.82 };
+  // ── TURN_LEFT：左手明顯比右手高且直舉(右手小臂保持平舉當軸) ──
+  if (lUp && lw.y < rw.y - shoulderW * 0.5) {
+    return { gesture: GESTURES.TURN_LEFT, confidence: 0.85 };
+  }
+  // ── TURN_RIGHT：右手明顯比左手高 ──
+  if (rUp && rw.y < lw.y - shoulderW * 0.5) {
+    return { gesture: GESTURES.TURN_RIGHT, confidence: 0.85 };
   }
 
-  // ── SLOW：雙臂下伸並向外張（由腰到膝拍動的近似）──
-  if (downOut(lw, lOut) && downOut(rw, rOut)) {
+  // ── SLOW(減速)：雙手都往下（減速到停的起手式）──
+  if (down(lw) && down(rw)) {
     return { gesture: GESTURES.SLOW, confidence: 0.8 };
   }
 
