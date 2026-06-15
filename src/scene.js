@@ -507,12 +507,19 @@ export class GameScene {
         this.aircraftGroup.rotation.set(0, 0, 0);
         this.aircraftGroup.updateMatrixWorld(true);
 
-        // 貼地：以「整機(已裁離群)最低點」為準降到 y=0。離群裁剪已清掉撐低包圍盒的雜散件，
-        // 故整機最低點即輪/機腹著地點;不再用「精修到偵測輪」以免偵測到的不是真正最低輪而把機體壓入地面(ATR72 下沉)。
+        // 貼地：以「穩健最低面」降到 y=0 — 忽略 1~2 個離群低面(分離陰影/標記，否則整機浮空)，
+        // 但用「網格實際底面」而非偵測到的輪(偵測不準會把機體壓入地面/ATR72 下沉)。
         try {
-          const box = new THREE.Box3().setFromObject(holder);
-          if (isFinite(box.min.y)) {
-            holder.position.y += -box.min.y;
+          const bottoms = [];
+          holder.traverse((o) => { if (o.isMesh && o.geometry) bottoms.push(new THREE.Box3().setFromObject(o).min.y); });
+          if (bottoms.length) {
+            bottoms.sort((a, b) => a - b);
+            const span = (bottoms[bottoms.length - 1] - bottoms[0]) || 1;
+            let groundRef = bottoms[0];
+            for (let i = 1; i < Math.min(4, bottoms.length); i++) {
+              if (bottoms[i] - bottoms[i - 1] > 0.12 * span) groundRef = bottoms[i]; else break; // 跨過低離群面
+            }
+            holder.position.y -= groundRef;
             this.aircraftGroup.updateMatrixWorld(true);
           }
         } catch (e) { console.warn('貼地失敗：', e); }
@@ -636,7 +643,8 @@ export class GameScene {
       const maxD = dims[2][1];
       // 圓盤(兩大維接近 0.78，排除矩形貨艙門/面板) + 一薄維(軸)且軸水平(非 y)
       if (!(maxD > 0 && dims[1][1] > 0.78 * maxD && dims[0][1] < 0.55 * maxD && dims[0][0] !== 'y')) return;
-      if (maxD > 0.07 * targetLen || maxD < 0.004 * targetLen) return;
+      // 尺寸上限縮到 0.04×機身長：輪胎小，引擎扇(如 GE90 直徑~2.3)大很多 → 大圓盤(引擎/螺旋槳)被排除。
+      if (maxD > 0.04 * targetLen || maxD < 0.004 * targetLen) return;
       const c = new THREE.Vector3(); b.getCenter(c);
       // 起落架在機腹下方(機身座標 |x| 小)，排除翼上引擎/螺旋槳/雜散圓盤
       if (Math.abs(this.aircraftGroup.worldToLocal(c.clone()).x) > 0.14 * targetLen) return;
@@ -655,6 +663,9 @@ export class GameScene {
     try {
       const underNose = (o) => { for (let p = o.parent; p; p = p.parent) if (p === this.noseGear) return true; return false; };
       const cand = this._wheelCandidates(holder, targetLen).filter((r) => !(this.noseGear && underNose(r.mesh)));
+      // 滾動輪應「貼地」(機體已貼地，真輪 y≈0)。若扣掉鼻輪後只剩極少數(≤2)且都離地偏高，
+      // 多半是尾椎/APU 等離地雜散圓盤(非真主輪) → 不滾，避免單一高處零件原地亂轉(如 ATR72 尾部圓盤)。
+      if (cand.length && cand.length <= 2 && Math.min(...cand.map((r) => r.c.y)) > 1.3) return;
       // 機身橫向(輪軸)在世界座標的方向 = aircraftGroup 局部 +X。
       this.aircraftGroup.updateMatrixWorld(true);
       const aq = new THREE.Quaternion(); this.aircraftGroup.getWorldQuaternion(aq);
