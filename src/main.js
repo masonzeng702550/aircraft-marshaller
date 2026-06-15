@@ -155,7 +155,15 @@ function loop(now) {
   if (scene.activeStopZ != null) aircraft.stopRefZ = scene.activeStopZ; // 各機型停在自己的機型停止線
 
   const advice = aircraft.recommendedCommand();
-  scene.setChockmanPose(advice);
+  // 輪檔員「減速到停」改成依飛機接近程度「單次、慢慢」示範(不再來回掃 2-3 次)：
+  // 10m 起開始抬手，越接近抬越高，到位前一點點(約 1~2m)才掃到頂讓指揮棒交叉；停妥後維持交叉。
+  let chPose = advice, chProg = null;
+  if (aircraft.stopped) {
+    chPose = GESTURES.STOP; chProg = 1;
+  } else if (advice === GESTURES.SLOW || advice === GESTURES.STOP) {
+    chProg = Math.max(0, Math.min(1, (10 - aircraft.distanceToStopLine()) / 9));
+  }
+  scene.setChockmanPose(chPose, chProg);
   engineAudio.setRPM(scene.engineRPM ?? 1, aircraft.speed); // 引擎聲隨轉速(關車 spool-down)
   scene.render();
   updateHUD(raw, conf, command, tracked, advice);

@@ -265,9 +265,14 @@ export class GameScene {
       leg.position.set(px, 2, pz);
       this.jetbridge.add(leg);
     }
-    // 駕駛艙下方輪架(可移動式空橋)
+    // 駕駛艙下方輪架(可移動式空橋) + 連接輪架與駕駛艙的升降支柱(兩根)
     const bogie = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.5, 2.2), bridgeDark);
     bogie.position.set(B.x, 1.0, B.z); this.jetbridge.add(bogie);
+    for (const sz of [-0.7, 0.7]) {
+      const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 2.6, 8), roofMat);
+      strut.position.set(B.x, 2.45, B.z + sz); // 自輪架(y≈1.25)撐到駕駛艙底(y≈2.4以上)
+      this.jetbridge.add(strut);
+    }
     for (const wz of [-0.7, 0.7]) {
       const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.4, 12), bridgeDark);
       wheel.rotation.x = Math.PI / 2; wheel.position.set(B.x, 0.6, B.z + wz);
@@ -984,7 +989,8 @@ export class GameScene {
   // 依手勢擺一對手臂姿勢（紅色指揮棒信號，動畫式）。第三人稱看背面，左右已鏡射。
   // 大臂一律平舉(指向 ±X)；小臂+指揮棒以肘 ez 在「平舉(0)↔直舉(±π/2)」間擺動。
   // R 臂(+X)向上 ez=+π/2；L 臂(-X)向上 ez=-π/2。
-  _poseArms(L, R, gesture) {
+  // progress：0..1（僅輪檔員「減速到停」用）→ 依飛機接近程度單次緩慢掃手；null = 用時間來回擺動
+  _poseArms(L, R, gesture, progress = null) {
     if (!L || !R) return;
     const HR = Math.PI / 2, HL = -Math.PI / 2;       // 大臂平舉
     const t = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
@@ -1006,8 +1012,12 @@ export class GameScene {
       case GESTURES.SLOW:
       case GESTURES.STOP: {
         // 整條手臂打直(大臂+小臂+指揮棒一直線，肘=0)，從 Y-(下)畫半圓經 X(平舉)掃到 Y+(上)。
-        // 掃到頂時整條手臂「越過垂直向內傾」→ 兩支指揮棒交叉(手臂本身不交叉)。SLOW 來回掃、STOP 定在頂。
-        const sweep = gesture === GESTURES.STOP ? 1 : (Math.sin(t * 3) + 1) / 2;
+        // 掃到頂時整條手臂「越過垂直向內傾」→ 兩支指揮棒交叉(手臂本身不交叉)。
+        // progress 有值(輪檔員)：依飛機接近程度「單次、慢慢」掃手，不來回；接近頂端才交叉(到位前一點點)。
+        // progress 為 null(玩家備援)：STOP 定在頂、SLOW 來回掃。
+        const sweep = progress != null
+          ? progress
+          : (gesture === GESTURES.STOP ? 1 : (Math.sin(t * 3) + 1) / 2);
         const ang = sweep * (Math.PI + 0.5);           // 0(下)→π+0.5(上且向內傾)
         this._setArm(R, 0, ang, 0, 0);
         this._setArm(L, 0, -ang, 0, 0);
@@ -1024,9 +1034,10 @@ export class GameScene {
     this._poseArms(this.armL, this.armR, gesture);
   }
 
-  // 輪檔員（前方輔助指揮）依「建議手勢」擺姿，讓玩家照著做
-  setChockmanPose(gesture) {
-    this._poseArms(this.chArmL, this.chArmR, gesture);
+  // 輪檔員（前方輔助指揮）依「建議手勢」擺姿，讓玩家照著做。
+  // progress：減速到停的單次掃手進度(0..1，依飛機距停止線)；其餘手勢忽略。
+  setChockmanPose(gesture, progress = null) {
+    this._poseArms(this.chArmL, this.chArmR, gesture, progress);
   }
 
   _buildNPCs() {
