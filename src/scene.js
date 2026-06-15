@@ -100,12 +100,15 @@ export class GameScene {
 
     // 中心引導線（lead-in line）：從停止線一路向上到導入弧銜接點。
     // 轉彎後留長距離可以慢慢對齊（參考標準停機位標線）。
-    const JUNCTION_Z = TAXIWAY_Z - 14;          // 導入弧與直線中心線的銜接點
-    const NEAR_Z = -1;                           // 中央線近端(延伸到最近一條停止線之前)
+    // 停止線比例尺(供中央線近端對齊用)：z = REAR_Z − 代表機身長 × SCALE。
+    const SCALE = 0.28, REAR_Z = 8 + 63.7 * 0.28; // 787/A330 那條落在 STOP_LINE_Z(=8)
+    const B777_Z = REAR_Z - 73.9 * SCALE;         // 最近(B777)那條停止線
+    const JUNCTION_Z = TAXIWAY_Z - 14;            // 導入弧與直線中心線的銜接點
+    const NEAR_Z = B777_Z;                        // 中央線尾端(近端)對準 B777 停止線
     const straightLen = JUNCTION_Z - NEAR_Z;
     const centerline = new THREE.Mesh(new THREE.PlaneGeometry(0.2, straightLen), lineMat); // 線寬≈0.28m(真實導入線 15cm 級)
     centerline.rotation.x = -Math.PI / 2;
-    centerline.position.set(0, 0.02, (NEAR_Z + JUNCTION_Z) / 2);
+    centerline.position.set(0, 0.012, (NEAR_Z + JUNCTION_Z) / 2);
     this.scene.add(centerline);
 
     // 彎曲導入線（轉彎輔助線）：自滑行道兩側平滑彎入中心線，左右各一條（漏斗狀）。
@@ -114,7 +117,7 @@ export class GameScene {
 
     // 垂直滑行道：瀝青帶 + 黃色實線中心線（飛機從這條滑行道的左/右端進場）
     const asphalt = new THREE.Mesh(
-      new THREE.PlaneGeometry(260, 24),
+      new THREE.PlaneGeometry(260, 40), // 加寬滑行道
       new THREE.MeshStandardMaterial({ color: 0x3c4147, roughness: 1 })
     );
     asphalt.rotation.x = -Math.PI / 2;
@@ -122,27 +125,25 @@ export class GameScene {
     this.scene.add(asphalt);
     const taxiCenter = new THREE.Mesh(new THREE.PlaneGeometry(260, 0.2), lineMat);
     taxiCenter.rotation.x = -Math.PI / 2;
-    taxiCenter.position.set(0, 0.02, TAXIWAY_Z);
+    taxiCenter.position.set(0, 0.012, TAXIWAY_Z);
     this.scene.add(taxiCenter);
 
     // Turn bar（轉彎橫桿）：標示開始轉彎處，垂直於導入線、位於導入弧銜接點
     const turnBar = new THREE.Mesh(new THREE.PlaneGeometry(4, 0.5), lineMat);
     turnBar.rotation.x = -Math.PI / 2;
-    turnBar.position.set(0, 0.025, JUNCTION_Z);
+    turnBar.position.set(0, 0.012, JUNCTION_Z);
     this.scene.add(turnBar);
 
     // Alignment bar（對位桿）：與飛機停妥時的延伸中心線重合，停止前供駕駛對準
     const alignBar = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 4), lineMat);
     alignBar.rotation.x = -Math.PI / 2;
-    alignBar.position.set(0, 0.025, -3); // 置於最近停止線之前供對準
+    alignBar.position.set(0, 0.012, -3); // 置於最近停止線之前供對準
     this.scene.add(alignBar);
 
     // 機型鼻輪停止線：分四條(由近到遠)，相近長度的機型共用一條。全部黃色(同滑行道/中央線粗細)+黑色細外框。
     // 機尾對齊共同後界(REAR_Z)，機身越長機鼻越往登機口(近端)靠 → 越長的飛機停止線越「近」、占用越長的停機位。
     // 每條線左右兩端各標一個機型代號。z = REAR_Z − 代表機身長 × 比例尺(0.72 單位/公尺)。
-    const SCALE = 0.28;     // 依機身長按比例(壓縮間距，四條線靠近一點、不會相差太遠)
-    const REAR_Z = 8 + 63.7 * 0.28; // 使 787/A330 那條落在 STOP_LINE_Z(=8)，其餘依比例靠攏
-    const ACROSS = 8;       // 橫線跨距(供左右兩端標牌)
+    const ACROSS = 4;       // 橫線跨距(縮短停止線寬度;輪檔員站位另以固定值,不隨此縮)
     this.typeStopZ = {};
     this.typeAcross = {};
     const ROWS = [          // 由近(長)到遠(短)
@@ -170,14 +171,14 @@ export class GameScene {
       new THREE.MeshBasicMaterial({ color: 0x14160f })
     );
     outline.rotation.x = -Math.PI / 2;
-    outline.position.set(0, 0.028, z);
+    outline.position.set(0, 0.01, z);
     this.scene.add(outline);
     const bar = new THREE.Mesh(
       new THREE.PlaneGeometry(across, 0.2), // 與滑行道線/中央線同粗細
       new THREE.MeshBasicMaterial({ color: 0xf2d250 })
     );
     bar.rotation.x = -Math.PI / 2;
-    bar.position.set(0, 0.032, z);
+    bar.position.set(0, 0.014, z);
     this.scene.add(bar);
   }
 
@@ -200,7 +201,7 @@ export class GameScene {
     );
     mesh.rotation.x = -Math.PI / 2;
     mesh.rotation.z = Math.PI; // 文字正面朝第三人稱(自後方看 +Z)
-    mesh.position.set(x, 0.033, z);
+    mesh.position.set(x, 0.016, z);
     this.scene.add(mesh);
   }
 
@@ -240,6 +241,7 @@ export class GameScene {
       col.position.set(cx, 2, cz);
       this.jetbridge.add(col);
     }
+    this.jetbridge.position.set(-7, 0, -11); // 外移到機翼前方(前艙門處)對接，避免撞到停妥飛機的機翼/機身
     this.scene.add(this.jetbridge);
 
     // 跑道（遠方 +Z，沿 X 的長瀝青帶 + 白色中心虛線）
@@ -287,25 +289,7 @@ export class GameScene {
       this.scene.add(m);
     }
 
-    // 機棚（遠方兩座）
-    const hangarMat = new THREE.MeshStandardMaterial({ color: 0xb7bdc4, roughness: 0.85 });
-    for (const hx of [-120, 130]) {
-      const h = new THREE.Mesh(new THREE.BoxGeometry(70, 26, 50), hangarMat);
-      h.position.set(hx, 13, 150);
-      this.scene.add(h);
-      const hr = new THREE.Mesh(new THREE.CylinderGeometry(26, 26, 70, 16, 1, false, 0, Math.PI), hangarMat);
-      hr.rotation.z = Math.PI / 2;
-      hr.position.set(hx, 26, 150);
-      this.scene.add(hr);
-    }
-
-    // 塔台
-    const tower = new THREE.Mesh(new THREE.CylinderGeometry(2, 3, 40, 12), wallMat);
-    tower.position.set(70, 20, 120);
-    this.scene.add(tower);
-    const towerCab = new THREE.Mesh(new THREE.CylinderGeometry(5, 4, 5, 12), glassMat);
-    towerCab.position.set(70, 42, 120);
-    this.scene.add(towerCab);
+    // (移除遠方機棚與塔台)
 
     // 機坪照明燈柱
     for (const [px, pz] of [[-44, 6], [44, 6], [-44, 52], [44, 52]]) {
@@ -331,7 +315,7 @@ export class GameScene {
 
   // 彎曲導入線：自滑行道(side*18, TAXIWAY_Z) 平滑彎入中心線(0, junctionZ)
   _addLeadInCurve(side, junctionZ, mat) {
-    const y = 0.06;
+    const y = 0.012;
     const curve = new THREE.QuadraticBezierCurve3(
       new THREE.Vector3(side * 28, y, TAXIWAY_Z), // 起點：滑行道上
       new THREE.Vector3(0, y, TAXIWAY_Z),         // 控制點：使起點切線水平、終點切線垂直
@@ -361,7 +345,7 @@ export class GameScene {
     );
     mesh.rotation.x = -Math.PI / 2;
     mesh.rotation.z = Math.PI; // 讓文字正面朝向第三人稱(自後方看 +Z)
-    mesh.position.set(0, 0.03, z);
+    mesh.position.set(0, 0.016, z);
     this.scene.add(mesh);
   }
 
@@ -448,8 +432,7 @@ export class GameScene {
     this.activeStopZ = (this.typeStopZ && this.typeStopZ[key] != null) ? this.typeStopZ[key] : STOP_LINE_Z;
     // 輪檔員站在「該機型停止線」的右方(玩家視角的右側=螢幕右側=-x；隨機型移動)
     if (this.chockman) {
-      const ax = (this.typeAcross && this.typeAcross[key]) ? this.typeAcross[key] : 6;
-      this.chockman.position.set(-(ax / 2 + 1.6), 0, this.activeStopZ);
+      this.chockman.position.set(-5.6, 0, this.activeStopZ); // 固定站位(不隨停止線縮短而內移)
     }
   }
 
@@ -1022,9 +1005,8 @@ export class GameScene {
     this.chArmL = ch.armL;
     this.chArmR = ch.armR;
     // 初始置於 787 停止線右方(loadAircraft 會依作用機型重新定位)
-    const ax0 = (this.typeAcross && this.typeAcross.B787) ? this.typeAcross.B787 : 6;
     const z0 = (this.typeStopZ && this.typeStopZ.B787 != null) ? this.typeStopZ.B787 : STOP_LINE_Z;
-    this.chockman.position.set(-(ax0 / 2 + 1.6), 0, z0);
+    this.chockman.position.set(-5.6, 0, z0); // 固定站位
     this.scene.add(this.chockman);
 
     // 兩位 Wing Walker：固定站在翼尖旋轉半徑的左右淨空邊界（不隨飛機移動）。
@@ -1042,7 +1024,7 @@ export class GameScene {
     for (const sx of [-CLEAR, CLEAR]) {
       const line = new THREE.Mesh(new THREE.PlaneGeometry(0.25, TAXIWAY_Z - 10 - STOP_LINE_Z), safetyMat);
       line.rotation.x = -Math.PI / 2;
-      line.position.set(sx, 0.015, (STOP_LINE_Z + TAXIWAY_Z - 10) / 2);
+      line.position.set(sx, 0.012, (STOP_LINE_Z + TAXIWAY_Z - 10) / 2);
       this.scene.add(line);
     }
   }
