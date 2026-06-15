@@ -97,6 +97,15 @@ export class GameScene {
     this.scene.add(ground);
 
     const lineMat = new THREE.MeshBasicMaterial({ color: 0xf2d250 });
+    const outlineMat = new THREE.MeshBasicMaterial({ color: 0x14160f }); // 黑色細外框(同停止線)
+    this._lineOutlineMat = outlineMat;
+    // 直線標線輔助：黑色細外框 + 黃色線(都貼地)。planeW/planeL 為黃線尺寸,外框各邊 +0.08。
+    const stripe = (w, l, x, z) => {
+      const o = new THREE.Mesh(new THREE.PlaneGeometry(w + 0.16, l + 0.16), outlineMat);
+      o.rotation.x = -Math.PI / 2; o.position.set(x, 0.011, z); this.scene.add(o);
+      const b = new THREE.Mesh(new THREE.PlaneGeometry(w, l), lineMat);
+      b.rotation.x = -Math.PI / 2; b.position.set(x, 0.013, z); this.scene.add(b);
+    };
 
     // 中心引導線（lead-in line）：從停止線一路向上到導入弧銜接點。
     // 轉彎後留長距離可以慢慢對齊（參考標準停機位標線）。
@@ -106,10 +115,7 @@ export class GameScene {
     const JUNCTION_Z = TAXIWAY_Z - 14;            // 導入弧與直線中心線的銜接點
     const NEAR_Z = B777_Z;                        // 中央線尾端(近端)對準 B777 停止線
     const straightLen = JUNCTION_Z - NEAR_Z;
-    const centerline = new THREE.Mesh(new THREE.PlaneGeometry(0.2, straightLen), lineMat); // 線寬≈0.28m(真實導入線 15cm 級)
-    centerline.rotation.x = -Math.PI / 2;
-    centerline.position.set(0, 0.012, (NEAR_Z + JUNCTION_Z) / 2);
-    this.scene.add(centerline);
+    stripe(0.2, straightLen, 0, (NEAR_Z + JUNCTION_Z) / 2); // 中央線(含黑色細外框)
 
     // 彎曲導入線（轉彎輔助線）：自滑行道兩側平滑彎入中心線，左右各一條（漏斗狀）。
     this._addLeadInCurve(-1, JUNCTION_Z, lineMat); // 左側進場用
@@ -123,22 +129,10 @@ export class GameScene {
     asphalt.rotation.x = -Math.PI / 2;
     asphalt.position.set(0, 0.005, TAXIWAY_Z);
     this.scene.add(asphalt);
-    const taxiCenter = new THREE.Mesh(new THREE.PlaneGeometry(260, 0.2), lineMat);
-    taxiCenter.rotation.x = -Math.PI / 2;
-    taxiCenter.position.set(0, 0.012, TAXIWAY_Z);
-    this.scene.add(taxiCenter);
+    stripe(260, 0.2, 0, TAXIWAY_Z); // 滑行道中央線(含黑色細外框)
 
     // Turn bar（轉彎橫桿）：標示開始轉彎處，垂直於導入線、位於導入弧銜接點
-    const turnBar = new THREE.Mesh(new THREE.PlaneGeometry(4, 0.5), lineMat);
-    turnBar.rotation.x = -Math.PI / 2;
-    turnBar.position.set(0, 0.012, JUNCTION_Z);
-    this.scene.add(turnBar);
-
-    // Alignment bar（對位桿）：與飛機停妥時的延伸中心線重合，停止前供駕駛對準
-    const alignBar = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 4), lineMat);
-    alignBar.rotation.x = -Math.PI / 2;
-    alignBar.position.set(0, 0.012, -3); // 置於最近停止線之前供對準
-    this.scene.add(alignBar);
+    stripe(4, 0.5, 0, JUNCTION_Z); // 轉彎橫桿(含黑色細外框)
 
     // 機型鼻輪停止線：分四條(由近到遠)，相近長度的機型共用一條。全部黃色(同滑行道/中央線粗細)+黑色細外框。
     // 機尾對齊共同後界(REAR_Z)，機身越長機鼻越往登機口(近端)靠 → 越長的飛機停止線越「近」、占用越長的停機位。
@@ -156,8 +150,8 @@ export class GameScene {
       const z = REAR_Z - r.repLen * SCALE;
       this._addStopLine(z, ACROSS);
       // 玩家視角(過肩望向 +z)：螢幕左 = +x、螢幕右 = -x
-      if (r.left) { this.typeStopZ[r.left] = z; this.typeAcross[r.left] = ACROSS; this._addTypeLabel(r.left, ACROSS / 2 + 1.6, z); }
-      if (r.right) { this.typeStopZ[r.right] = z; this.typeAcross[r.right] = ACROSS; this._addTypeLabel(r.right, -(ACROSS / 2 + 1.6), z); }
+      if (r.left) { this.typeStopZ[r.left] = z; this.typeAcross[r.left] = ACROSS; this._addTypeLabel(r.left, ACROSS / 2 + 2.2, z); }
+      if (r.right) { this.typeStopZ[r.right] = z; this.typeAcross[r.right] = ACROSS; this._addTypeLabel(r.right, -(ACROSS / 2 + 2.2), z); }
     }
 
     // 機位編號（置於最近一條停止線之前）
@@ -184,19 +178,24 @@ export class GameScene {
 
   // 機型代號標牌：黑底 + 黃字（ICAO 規定黃字黑底）
   _addTypeLabel(text, x, z) {
+    const W = 512, H = 200;
     const canvas = document.createElement('canvas');
-    canvas.width = 256; canvas.height = 96;
+    canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#14160f';
-    ctx.fillRect(0, 0, 256, 96);
-    ctx.fillStyle = '#f2d250';
-    ctx.font = 'bold 64px sans-serif';
+    ctx.fillStyle = '#14160f';        // 黑底
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = '#f2d250';      // 黃色細邊增加清晰度
+    ctx.lineWidth = 10;
+    ctx.strokeRect(8, 8, W - 16, H - 16);
+    ctx.fillStyle = '#f2d250';        // 黃字(ICAO 黃字黑底)
+    ctx.font = 'bold 130px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(text, 128, 50);
+    ctx.fillText(text, W / 2, H / 2 + 6);
     const tex = new THREE.CanvasTexture(canvas);
+    tex.anisotropy = 8;               // 斜視角更銳利
     const mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.5, 0.95),
+      new THREE.PlaneGeometry(3.4, 1.33),
       new THREE.MeshBasicMaterial({ map: tex, transparent: true })
     );
     mesh.rotation.x = -Math.PI / 2;
@@ -224,24 +223,57 @@ export class GameScene {
     terminal.add(roof);
     this.scene.add(terminal);
 
-    // 空橋：自航廈架高、斜向伸到飛機左側機門（位於 -X，畫面右側）
+    // 空橋：自航廈架高、斜向連續伸到飛機左側前艙門（位於 -X，畫面右側）。
+    // 設計：圓形轉盤 → 連續斜向通道(含玻璃窗帶+斜頂) → 駕駛艙(含波紋對接罩+輪架)，A 字支柱撐起。
     this.jetbridge = new THREE.Group();
-    const rotunda = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 5, 12), wallMat);
-    rotunda.position.set(-22, 3.5, 0);
+    const bridgeDark = new THREE.MeshStandardMaterial({ color: 0x3a4048, roughness: 0.6, metalness: 0.3 });
+    // 通道兩端（local 座標）：A=轉盤(航廈側)、B=駕駛艙(機門側)
+    const A = new THREE.Vector3(-26, 4.2, -4);
+    const B = new THREE.Vector3(-8, 4.2, 18);
+    const d = new THREE.Vector3().subVectors(B, A);
+    const len = Math.hypot(d.x, d.z);
+    const rotY = -Math.atan2(d.z, d.x);            // 讓盒子長邊(local +X)指向 A→B
+    const M = new THREE.Vector3().addVectors(A, B).multiplyScalar(0.5);
+    // 轉盤(圓柱)
+    const rotunda = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 6, 16), wallMat);
+    rotunda.position.set(A.x, 3.4, A.z);
     this.jetbridge.add(rotunda);
-    const tunnel = new THREE.Mesh(new THREE.BoxGeometry(15, 2.3, 2.3), glassMat);
-    tunnel.position.set(-13, 4.2, 14);
-    tunnel.rotation.y = -0.7;
+    // 連續通道主體
+    const tunnel = new THREE.Mesh(new THREE.BoxGeometry(len, 2.7, 2.7), wallMat);
+    tunnel.position.copy(M); tunnel.rotation.y = rotY;
     this.jetbridge.add(tunnel);
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(2.8, 2.6, 2.4), wallMat);
-    cab.position.set(-6, 4.2, 22);
+    // 玻璃窗帶(沿通道側面，設計感)
+    const glassStrip = new THREE.Mesh(new THREE.BoxGeometry(len * 0.96, 1.0, 2.74), glassMat);
+    glassStrip.position.set(M.x, M.y + 0.25, M.z); glassStrip.rotation.y = rotY;
+    this.jetbridge.add(glassStrip);
+    // 斜頂(深色，蓋在通道上)
+    const bridgeRoof = new THREE.Mesh(new THREE.BoxGeometry(len, 0.35, 3.1), bridgeDark);
+    bridgeRoof.position.set(M.x, M.y + 1.55, M.z); bridgeRoof.rotation.y = rotY;
+    this.jetbridge.add(bridgeRoof);
+    // 駕駛艙(機門端)
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(3.6, 3.2, 3.2), wallMat);
+    cab.position.set(B.x, 4.0, B.z); cab.rotation.y = rotY;
     this.jetbridge.add(cab);
-    for (const [cx, cz] of [[-20, 4], [-12, 13]]) {
-      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 4, 8), roofMat);
-      col.position.set(cx, 2, cz);
-      this.jetbridge.add(col);
+    // 波紋對接罩(駕駛艙前端、朝飛機；深色)
+    const bellows = new THREE.Mesh(new THREE.BoxGeometry(1.3, 2.8, 3.0), bridgeDark);
+    bellows.position.set(B.x + 1.9, 4.0, B.z + 0.4); bellows.rotation.y = rotY;
+    this.jetbridge.add(bellows);
+    // A 字支柱(沿通道等距 3 支)
+    for (const f of [0.3, 0.6, 0.85]) {
+      const px = A.x + d.x * f, pz = A.z + d.z * f;
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 4, 8), roofMat);
+      leg.position.set(px, 2, pz);
+      this.jetbridge.add(leg);
     }
-    this.jetbridge.position.set(-7, 0, -11); // 外移到機翼前方(前艙門處)對接，避免撞到停妥飛機的機翼/機身
+    // 駕駛艙下方輪架(可移動式空橋)
+    const bogie = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.5, 2.2), bridgeDark);
+    bogie.position.set(B.x, 1.0, B.z); this.jetbridge.add(bogie);
+    for (const wz of [-0.7, 0.7]) {
+      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.4, 12), bridgeDark);
+      wheel.rotation.x = Math.PI / 2; wheel.position.set(B.x, 0.6, B.z + wz);
+      this.jetbridge.add(wheel);
+    }
+    this.jetbridge.position.set(-6, 0, -6); // 整體外移、與停妥飛機保持距離(遠一點)，駕駛艙對著前艙門但不貼機身
     this.scene.add(this.jetbridge);
 
     // 跑道（遠方 +Z，沿 X 的長瀝青帶 + 白色中心虛線）
@@ -321,6 +353,13 @@ export class GameScene {
       new THREE.Vector3(0, y, TAXIWAY_Z),         // 控制點：使起點切線水平、終點切線垂直
       new THREE.Vector3(0, y, junctionZ)          // 終點：銜接中心線
     );
+    // 黑色細外框(較粗的黑管,貼地一點點低) + 黃色線(較細,在上)
+    const outline = new THREE.Mesh(
+      new THREE.TubeGeometry(curve, 28, 0.33, 8, false),
+      this._lineOutlineMat
+    );
+    outline.position.y = -0.001;
+    this.scene.add(outline);
     const tube = new THREE.Mesh(
       new THREE.TubeGeometry(curve, 28, 0.25, 8, false),
       mat
