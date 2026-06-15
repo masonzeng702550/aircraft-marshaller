@@ -140,8 +140,8 @@ export class GameScene {
     // 機型鼻輪停止線：分四條(由近到遠)，相近長度的機型共用一條。全部黃色(同滑行道/中央線粗細)+黑色細外框。
     // 機尾對齊共同後界(REAR_Z)，機身越長機鼻越往登機口(近端)靠 → 越長的飛機停止線越「近」、占用越長的停機位。
     // 每條線左右兩端各標一個機型代號。z = REAR_Z − 代表機身長 × 比例尺(0.72 單位/公尺)。
-    const SCALE = 0.72;     // 場景公尺→單位(787 模型 46 單位 / 62.8m)
-    const REAR_Z = 53.86;   // 共同機尾後界，使 787/A330 那條落在 STOP_LINE_Z(=8)
+    const SCALE = 0.28;     // 依機身長按比例(壓縮間距，四條線靠近一點、不會相差太遠)
+    const REAR_Z = 8 + 63.7 * 0.28; // 使 787/A330 那條落在 STOP_LINE_Z(=8)，其餘依比例靠攏
     const ACROSS = 8;       // 橫線跨距(供左右兩端標牌)
     this.typeStopZ = {};
     this.typeAcross = {};
@@ -507,26 +507,36 @@ export class GameScene {
         this.aircraftGroup.rotation.set(0, 0, 0);
         this.aircraftGroup.updateMatrixWorld(true);
 
-        // 貼地：以「穩健最低面」降到 y=0 — 忽略 1~2 個離群低面(分離陰影/標記，否則整機浮空)，
-        // 但用「網格實際底面」而非偵測到的輪(偵測不準會把機體壓入地面/ATR72 下沉)。
-        try {
-          const bottoms = [];
-          holder.traverse((o) => { if (o.isMesh && o.geometry) bottoms.push(new THREE.Box3().setFromObject(o).min.y); });
-          if (bottoms.length) {
-            bottoms.sort((a, b) => a - b);
-            const span = (bottoms[bottoms.length - 1] - bottoms[0]) || 1;
-            let groundRef = bottoms[0];
-            for (let i = 1; i < Math.min(4, bottoms.length); i++) {
-              if (bottoms[i] - bottoms[i - 1] > 0.12 * span) groundRef = bottoms[i]; else break; // 跨過低離群面
-            }
-            holder.position.y -= groundRef;
-            this.aircraftGroup.updateMatrixWorld(true);
-          }
-        } catch (e) { console.warn('貼地失敗：', e); }
-
+        // 先偵測起落架/螺旋槳(這時已概略貼地)，再依「驗證過的輪+鼻輪」最終貼地。
         this._setupNoseSteer(holder, targetLen);
         this._setupWheels(holder, targetLen);
         this._setupProps(holder, targetLen);
+
+        // 最終貼地：以「驗證過的主輪底」為著地點降到 y=0(主輪確實著地，不再浮空)。主輪是主要視覺著地點，
+        // 不混入鼻輪(部分模型鼻輪比主輪低，會讓主輪浮空)。沒有有效主輪(如 ATR72) → 退回「穩健最低面」。
+        try {
+          const contacts = [];
+          for (const w of this.wheels) { const p = new THREE.Vector3(); w.pivot.getWorldPosition(p); contacts.push(p.y - w.radius); }
+          let ref = null;
+          if (contacts.length) {
+            ref = Math.min(...contacts);
+          } else {
+            const bottoms = [];
+            holder.traverse((o) => { if (o.isMesh && o.geometry) bottoms.push(new THREE.Box3().setFromObject(o).min.y); });
+            if (bottoms.length) {
+              bottoms.sort((a, b) => a - b);
+              const span = (bottoms[bottoms.length - 1] - bottoms[0]) || 1;
+              ref = bottoms[0];
+              for (let i = 1; i < Math.min(4, bottoms.length); i++) {
+                if (bottoms[i] - bottoms[i - 1] > 0.12 * span) ref = bottoms[i]; else break; // 跨過低離群面
+              }
+            }
+          }
+          if (ref != null && isFinite(ref) && Math.abs(ref) > 1e-4) {
+            holder.position.y -= ref;
+            this.aircraftGroup.updateMatrixWorld(true);
+          }
+        } catch (e) { console.warn('貼地失敗：', e); }
       },
       undefined,
       (err) => console.warn('飛機模型載入失敗：', err)
@@ -864,7 +874,7 @@ export class GameScene {
   _makeArm() {
     const skin = new THREE.MeshStandardMaterial({ color: 0xe0a878, roughness: 0.75 }); // 膚色
     const sleeve = new THREE.MeshStandardMaterial({ color: 0x42525f, roughness: 0.85 }); // 短袖
-    const wandMat = new THREE.MeshStandardMaterial({ color: 0xff7a1a, emissive: 0xff5a00, emissiveIntensity: 0.75 }); // 發光指揮棒
+    const wandMat = new THREE.MeshStandardMaterial({ color: 0xff2a1e, emissive: 0xff1500, emissiveIntensity: 0.85 }); // 紅色發光指揮棒
     const shoulder = new THREE.Group();
     const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.36, 4, 10), skin); // 有肉的上臂
     upper.position.y = -0.26;
@@ -899,10 +909,11 @@ export class GameScene {
     return { grp, armL, armR };
   }
 
-  // 設定單手姿勢：肩(sx 繞X、sz 繞Z)、肘(ex 繞X 彎曲)
-  _setArm(shoulder, sx, sz, ex) {
+  // 設定單手姿勢：肩(sx 繞X、sz 繞Z)、肘(ex 繞X 前後彎、ez 繞Z 上下擺)。
+  // 大臂平舉(sz=±π/2 指向 ±X)時，肘 ez 可把小臂從「順著大臂(平舉)」擺到「向上(直舉)」。
+  _setArm(shoulder, sx, sz, ex, ez = 0) {
     shoulder.rotation.set(sx, 0, sz);
-    shoulder.userData.elbow.rotation.set(ex, 0, 0);
+    shoulder.userData.elbow.rotation.set(ex, 0, ez);
   }
 
   // 由 MediaPipe 骨架即時驅動化身雙臂關節（連續鏡像玩家動作，非固定姿勢）。
@@ -935,34 +946,41 @@ export class GameScene {
     return cur + (t - cur) * k;
   }
 
-  // 依手勢擺一對手臂姿勢（含肘關節）。第三人稱看背面，左右已鏡射。
+  // 依手勢擺一對手臂姿勢（紅色指揮棒信號，動畫式）。第三人稱看背面，左右已鏡射。
+  // 大臂一律平舉(指向 ±X)；小臂+指揮棒以肘 ez 在「平舉(0)↔直舉(±π/2)」間擺動。
+  // R 臂(+X)向上 ez=+π/2；L 臂(-X)向上 ez=-π/2。
   _poseArms(L, R, gesture) {
     if (!L || !R) return;
-    const UP = -2.3, BECKON = 1.5; // 上臂上舉前伸 + 前臂折起招手
+    const HR = Math.PI / 2, HL = -Math.PI / 2;       // 大臂平舉
+    const t = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+    const osc = (Math.sin(t * 6) + 1) / 2;            // 0..1 來回擺動(~1Hz)
+    const up = (side, frac) => side * (Math.PI / 2) * frac; // 小臂上抬比例 → 肘 ez
     switch (gesture) {
-      case GESTURES.GO: // 雙手舉到頭前招手
-        this._setArm(L, UP, 0, BECKON);
-        this._setArm(R, UP, 0, BECKON);
+      case GESTURES.TURN_LEFT: // 一手小臂平舉↔直舉來回；另一手小臂保持平舉；大臂都平舉
+        this._setArm(R, 0, HR, 0, up(1, osc));         // 右臂小臂擺動
+        this._setArm(L, 0, HL, 0, 0);                  // 左臂小臂保持平舉
         break;
-      case GESTURES.STOP: // 雙臂上舉於頭頂交叉（前臂打直）
-        this._setArm(L, 2.95, -0.35, 0);
-        this._setArm(R, 2.95, 0.35, 0);
+      case GESTURES.TURN_RIGHT:
+        this._setArm(L, 0, HL, 0, up(-1, osc));        // 左臂小臂擺動
+        this._setArm(R, 0, HR, 0, 0);                  // 右臂小臂保持平舉
         break;
-      case GESTURES.TURN_LEFT: // 右手向上招手 + 左臂平舉當軸（鏡射）
-        this._setArm(R, UP, 0, BECKON);
-        this._setArm(L, 0, -1.5, 0);
+      case GESTURES.GO: // 兩手小臂同時扇形擺動(平舉↔直舉)
+        this._setArm(R, 0, HR, 0, up(1, osc));
+        this._setArm(L, 0, HL, 0, up(-1, osc));
         break;
-      case GESTURES.TURN_RIGHT: // 左手向上招手 + 右臂平舉當軸（鏡射）
-        this._setArm(L, UP, 0, BECKON);
-        this._setArm(R, 0, 1.5, 0);
+      case GESTURES.SLOW:
+      case GESTURES.STOP: {
+        // 整條手臂打直(大臂+小臂+指揮棒一直線，肘=0)，從 Y-(下)畫半圓經 X(平舉)掃到 Y+(上)。
+        // 掃到頂時整條手臂「越過垂直向內傾」→ 兩支指揮棒交叉(手臂本身不交叉)。SLOW 來回掃、STOP 定在頂。
+        const sweep = gesture === GESTURES.STOP ? 1 : (Math.sin(t * 3) + 1) / 2;
+        const ang = sweep * (Math.PI + 0.5);           // 0(下)→π+0.5(上且向內傾)
+        this._setArm(R, 0, ang, 0, 0);
+        this._setArm(L, 0, -ang, 0, 0);
         break;
-      case GESTURES.SLOW: // 雙臂下伸外張、前臂微彎（拍動近似）
-        this._setArm(L, 0, -0.7, 0.5);
-        this._setArm(R, 0, 0.7, 0.5);
-        break;
+      }
       default: // NONE：雙臂自然垂下、前臂微彎
-        this._setArm(L, 0, 0, 0.12);
-        this._setArm(R, 0, 0, 0.12);
+        this._setArm(L, 0, 0, 0.12, 0);
+        this._setArm(R, 0, 0, 0.12, 0);
     }
   }
 
