@@ -104,10 +104,11 @@ export class Aircraft {
         turning = true;
         break;
       case GESTURES.SLOW:
-        targetSpeed = s.standSpeed * 0.5; // 減速：便於精準停靠
+        // 「減速到停」只在接近停止線 10m 內才生效(此動作是停止線前告訴機師準備踩全煞車)；太遠則維持滑行、不誤停。
+        targetSpeed = this.distanceToStopLine() <= 10 ? s.standSpeed * 0.5 : s.idle;
         break;
       case GESTURES.STOP:
-        targetSpeed = 0;
+        targetSpeed = this.distanceToStopLine() <= 10 ? 0 : s.idle; // 雙手交叉=停；僅 10m 內生效
         break;
       default:
         targetSpeed = s.idle; // 無指令：維持低速滑行
@@ -150,8 +151,8 @@ export class Aircraft {
     this.z -= Math.cos(this.heading) * this.speed * dt;
     this.x -= Math.sin(this.heading) * this.speed * dt;
 
-    // 停止：下了停止指令且已幾乎靜止
-    if (this.command === GESTURES.STOP && this.speed <= 0.03) {
+    // 停止：在停止線 10m 內下了停止指令(雙手交叉)且已幾乎靜止 → 停妥
+    if (this.command === GESTURES.STOP && this.distanceToStopLine() <= 10 && this.speed <= 0.03) {
       this.speed = 0;
       this.stopped = true;
     }
@@ -216,8 +217,8 @@ export class Aircraft {
     // 2) 已大致對齊但仍偏離中心線 → 往中心線修正（飛機左=-X）
     if (off > 1.2) return this.x > 0 ? GESTURES.TURN_LEFT : GESTURES.TURN_RIGHT;
     // 3) 對齊且置中 → 依距停止線：遠則前進、近則減速、到線停止
-    if (d <= 1) return GESTURES.STOP;
-    if (d <= 8) return GESTURES.SLOW;
+    if (d <= 1.5) return GESTURES.STOP;
+    if (d <= 10) return GESTURES.SLOW; // 停止線前 10m 開始示範「減速到停」
     return GESTURES.GO;
   }
 }
