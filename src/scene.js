@@ -507,16 +507,15 @@ export class GameScene {
         this.aircraftGroup.rotation.set(0, 0, 0);
         this.aircraftGroup.updateMatrixWorld(true);
 
-        // 精修貼地：以「偵測到的輪胎」最低點為準(排除雜散低矮網格造成下沉)
+        // 貼地：以「整機(已裁離群)最低點」為準降到 y=0。離群裁剪已清掉撐低包圍盒的雜散件，
+        // 故整機最低點即輪/機腹著地點;不再用「精修到偵測輪」以免偵測到的不是真正最低輪而把機體壓入地面(ATR72 下沉)。
         try {
-          const wc = this._wheelCandidates(holder, targetLen);
-          let wheelBottom = Infinity;
-          for (const r of wc) wheelBottom = Math.min(wheelBottom, r.c.y - r.maxD / 2);
-          if (isFinite(wheelBottom)) {
-            holder.position.y += -wheelBottom; // 將輪子降到 y=0
+          const box = new THREE.Box3().setFromObject(holder);
+          if (isFinite(box.min.y)) {
+            holder.position.y += -box.min.y;
             this.aircraftGroup.updateMatrixWorld(true);
           }
-        } catch (e) { console.warn('貼地精修失敗：', e); }
+        } catch (e) { console.warn('貼地失敗：', e); }
 
         this._setupNoseSteer(holder, targetLen);
         this._setupWheels(holder, targetLen);
@@ -543,6 +542,12 @@ export class GameScene {
     if (gmax < 0.18 * range) return; // 無顯著空隙 → 不動
     const victims = gi <= arr.length - gi ? arr.slice(0, gi) : arr.slice(gi);
     if (victims.length > 0.12 * arr.length) return; // 只清少數離群(避免誤砍機體大塊)
+    // 離群群中若含「大塊」(如垂直尾翼/水平安定面)，整批不裁；只清細小雜散件(分離標記/曲線)。
+    const hasBig = victims.some((x) => {
+      const sz = new THREE.Vector3(); new THREE.Box3().setFromObject(x.o).getSize(sz);
+      return Math.max(sz.x, sz.y, sz.z) > 0.1 * range;
+    });
+    if (hasBig) return;
     victims.forEach((x) => x.o.parent && x.o.parent.remove(x.o));
   }
 
@@ -620,6 +625,8 @@ export class GameScene {
   // 回傳 [{ mesh, c(世界輪心), maxD }]。各模型輪子帶節點旋轉/縮放也抓得到，且不要求成群(左右各一也算)。
   _wheelCandidates(holder, targetLen) {
     holder.updateMatrixWorld(true);
+    // 整機(已裁離群、已貼地)包圍盒 → 用「絕對底部高度帶」判起落架(只在最底 ~28% 機高內)，
+    // 穩定排除離地的引擎扇/螺旋槳/尾翼圓盤(它們在中高處)。圓度排除矩形貨艙門/面板。
     const cand = [];
     holder.traverse((o) => {
       if (!o.isMesh || !o.geometry) return;
@@ -627,19 +634,18 @@ export class GameScene {
       const ws = new THREE.Vector3(); b.getSize(ws);
       const dims = [['x', ws.x], ['y', ws.y], ['z', ws.z]].sort((a, c) => a[1] - c[1]);
       const maxD = dims[2][1];
-      // 輪胎判定：兩大維接近(圓) + 一薄維(軸)且軸為水平(非 y)。引擎/螺旋槳靠「離地高度」與「離中心線」排除，
-      // 不靠薄軸方向(各模型輪子的 AABB 薄軸不一定落在橫向 X，例如 787 主輪薄軸為 Z)。
-      if (!(maxD > 0 && dims[1][1] > 0.7 * maxD && dims[0][1] < 0.6 * maxD && dims[0][0] !== 'y')) return;
+      // 圓盤(兩大維接近 0.78，排除矩形貨艙門/面板) + 一薄維(軸)且軸水平(非 y)
+      if (!(maxD > 0 && dims[1][1] > 0.78 * maxD && dims[0][1] < 0.55 * maxD && dims[0][0] !== 'y')) return;
       if (maxD > 0.07 * targetLen || maxD < 0.004 * targetLen) return;
       const c = new THREE.Vector3(); b.getCenter(c);
-      // 起落架在機腹下方(機身座標 |x| 小)，排除翼上引擎/雜散圓盤
-      if (Math.abs(this.aircraftGroup.worldToLocal(c.clone()).x) > 0.16 * targetLen) return;
+      // 起落架在機腹下方(機身座標 |x| 小)，排除翼上引擎/螺旋槳/雜散圓盤
+      if (Math.abs(this.aircraftGroup.worldToLocal(c.clone()).x) > 0.14 * targetLen) return;
       cand.push({ mesh: o, c, maxD });
     });
     if (!cand.length) return [];
+    // 以「最低輪」為基準的高度帶(可容納高主輪如 787)，排除更高的引擎扇/螺旋槳/尾翼圓盤。
     const minY = Math.min(...cand.map((r) => r.c.y));
-    // 緊湊的底部高度帶：只納入「貼地的起落架」(鼻輪+主輪)，排除離地的引擎/螺旋槳/尾翼圓盤。
-    const band = Math.min(1.6, Math.max(0.6, 0.04 * targetLen));
+    const band = Math.min(2.5, Math.max(0.8, 0.05 * targetLen));
     return cand.filter((r) => r.c.y < minY + band);
   }
 
