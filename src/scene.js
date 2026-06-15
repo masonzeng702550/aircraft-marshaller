@@ -507,36 +507,49 @@ export class GameScene {
         this.aircraftGroup.rotation.set(0, 0, 0);
         this.aircraftGroup.updateMatrixWorld(true);
 
-        // 先偵測起落架/螺旋槳(這時已概略貼地)，再依「驗證過的輪+鼻輪」最終貼地。
+        // (1) 穩健貼地：跳過「被大空隙隔開的低離群面」(分離陰影/標記，如 737 模型機體下方約 11 單位的雜散面)，
+        // 把機體最低「實面」降到 y=0 → 修 737/350 被低離群件抬高而整機浮空。
+        try {
+          const bottoms = [];
+          holder.traverse((o) => { if (o.isMesh && o.geometry) bottoms.push(new THREE.Box3().setFromObject(o).min.y); });
+          if (bottoms.length) {
+            bottoms.sort((a, b) => a - b);
+            const span = (bottoms[bottoms.length - 1] - bottoms[0]) || 1;
+            let ref = bottoms[0];
+            for (let i = 1; i < Math.min(4, bottoms.length); i++) {
+              if (bottoms[i] - bottoms[i - 1] > 0.12 * span) ref = bottoms[i]; else break;
+            }
+            if (Math.abs(ref) > 1e-4) { holder.position.y -= ref; this.aircraftGroup.updateMatrixWorld(true); }
+          }
+        } catch (e) { console.warn('穩健貼地失敗：', e); }
+
+        // (2) 精修貼地(回到最初導入的高度，737/320 最佳)：以「輪形(圓+薄)+低+小」網格的最低底面降到 y=0。
+        // 但只在「輪底離概略地面不太高」時才精修：太高(>0.04×機身長)代表抓到的是高處零件/雜散圓盤而非真正貼地輪
+        // (787 抓到高輪會壓引擎入地過低、ATR72 抓到尾椎會下沉) → 不精修，沿用概略貼地(box.min→0)，高度自然。
+        try {
+          let wheelBottom = Infinity;
+          holder.traverse((o) => {
+            if (!o.isMesh || !o.geometry) return;
+            o.geometry.computeBoundingBox();
+            const ld = new THREE.Vector3(); o.geometry.boundingBox.getSize(ld);
+            const d = [ld.x, ld.y, ld.z].sort((a, b) => a - b);
+            if (!(d[1] > 0.65 * d[2] && d[0] < 0.6 * d[2])) return;
+            const b = new THREE.Box3().setFromObject(o);
+            const s = new THREE.Vector3(); b.getSize(s);
+            const ctr = new THREE.Vector3(); b.getCenter(ctr);
+            if (ctr.y < 0.3 * targetLen && Math.max(s.x, s.y, s.z) < 0.16 * targetLen) {
+              wheelBottom = Math.min(wheelBottom, b.min.y);
+            }
+          });
+          if (isFinite(wheelBottom) && wheelBottom > 0 && wheelBottom < 0.04 * targetLen) {
+            holder.position.y += -wheelBottom;
+            this.aircraftGroup.updateMatrixWorld(true);
+          }
+        } catch (e) { console.warn('貼地精修失敗：', e); }
+
         this._setupNoseSteer(holder, targetLen);
         this._setupWheels(holder, targetLen);
         this._setupProps(holder, targetLen);
-
-        // 最終貼地：以「驗證過的主輪底」為著地點降到 y=0(主輪確實著地，不再浮空)。主輪是主要視覺著地點，
-        // 不混入鼻輪(部分模型鼻輪比主輪低，會讓主輪浮空)。沒有有效主輪(如 ATR72) → 退回「穩健最低面」。
-        try {
-          const contacts = [];
-          for (const w of this.wheels) { const p = new THREE.Vector3(); w.pivot.getWorldPosition(p); contacts.push(p.y - w.radius); }
-          let ref = null;
-          if (contacts.length) {
-            ref = Math.min(...contacts);
-          } else {
-            const bottoms = [];
-            holder.traverse((o) => { if (o.isMesh && o.geometry) bottoms.push(new THREE.Box3().setFromObject(o).min.y); });
-            if (bottoms.length) {
-              bottoms.sort((a, b) => a - b);
-              const span = (bottoms[bottoms.length - 1] - bottoms[0]) || 1;
-              ref = bottoms[0];
-              for (let i = 1; i < Math.min(4, bottoms.length); i++) {
-                if (bottoms[i] - bottoms[i - 1] > 0.12 * span) ref = bottoms[i]; else break; // 跨過低離群面
-              }
-            }
-          }
-          if (ref != null && isFinite(ref) && Math.abs(ref) > 1e-4) {
-            holder.position.y -= ref;
-            this.aircraftGroup.updateMatrixWorld(true);
-          }
-        } catch (e) { console.warn('貼地失敗：', e); }
       },
       undefined,
       (err) => console.warn('飛機模型載入失敗：', err)
