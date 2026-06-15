@@ -4,8 +4,12 @@
 // 採合成：可控的 spool-down、與扇葉視覺同步、無外部檔案/授權問題。
 // 不同引擎音色設定：GE90(777，超大風扇)更低沉雄厚；GEnx(787)較高的風扇嘯聲。
 const ENGINE_PROFILES = {
-  GEnx: { roarBase: 300, roarSpan: 320, whineBase: 520, whineSpan: 720, rumbleHz: 180, rumble: 0.5, roar: 0.55, whine: 0.035 },
-  GE90: { roarBase: 210, roarSpan: 240, whineBase: 360, whineSpan: 520, rumbleHz: 130, rumble: 0.7, roar: 0.62, whine: 0.045 },
+  GEnx: { roarBase: 300, roarSpan: 320, whineBase: 520, whineSpan: 720, rumbleHz: 180, rumble: 0.5, roar: 0.55, whine: 0.035 }, // 787
+  GE90: { roarBase: 210, roarSpan: 240, whineBase: 360, whineSpan: 520, rumbleHz: 130, rumble: 0.7, roar: 0.62, whine: 0.045 }, // 777
+  TrentXWB: { roarBase: 240, roarSpan: 270, whineBase: 430, whineSpan: 600, rumbleHz: 150, rumble: 0.62, roar: 0.58, whine: 0.04 }, // A350(廣體渦扇)
+  LEAP: { roarBase: 330, roarSpan: 350, whineBase: 600, whineSpan: 780, rumbleHz: 200, rumble: 0.42, roar: 0.5, whine: 0.045 }, // 737MAX/A320(窄體現代渦扇,較高嘯聲)
+  // PW127(ATR72 渦輪螺旋槳)：低沉螺旋槳嗡鳴為主、幾乎無高頻嘶聲/風扇嘯聲，prop=true 額外加槳葉拍頻。
+  PW127: { roarBase: 150, roarSpan: 130, whineBase: 200, whineSpan: 150, rumbleHz: 95, rumble: 0.8, roar: 0.5, whine: 0.02, prop: true },
 };
 
 export class EngineAudio {

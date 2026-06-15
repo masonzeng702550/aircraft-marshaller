@@ -485,6 +485,10 @@ export class GameScene {
           remove.forEach((o) => o.parent && o.parent.remove(o));
           holder.updateMatrixWorld(true);
         }
+        // 移除「空間離群」網格(被大空隙隔開的少數零件，如分離的標記/曲線)，避免它們撐大包圍盒導致縮放/置中錯誤。
+        this._trimOutliers(holder, 'x'); this._trimOutliers(holder, 'z');
+        this._trimOutliers(holder, 'x'); this._trimOutliers(holder, 'z'); // 再跑一輪清多個離群
+        holder.updateMatrixWorld(true);
         // 量測 → 縮放到指定機身長，並置中(x,z)+概略貼地(y)
         const size = new THREE.Vector3();
         new THREE.Box3().setFromObject(holder).getSize(size);
@@ -499,24 +503,15 @@ export class GameScene {
           this.aircraftGroup.remove(this.aircraftGroup.children[0]);
         }
         this.aircraftGroup.add(holder);
+        // 偵測期間把機身座標歸零(= 世界座標)，讓輪軸/前後/左右判定不受當前航向影響；syncAircraft 下一幀恢復。
+        this.aircraftGroup.rotation.set(0, 0, 0);
         this.aircraftGroup.updateMatrixWorld(true);
 
-        // 精修貼地：以輪子最低點為準(失敗則沿用概略貼地)
+        // 精修貼地：以「偵測到的輪胎」最低點為準(排除雜散低矮網格造成下沉)
         try {
+          const wc = this._wheelCandidates(holder, targetLen);
           let wheelBottom = Infinity;
-          holder.traverse((o) => {
-            if (!o.isMesh || !o.geometry) return;
-            o.geometry.computeBoundingBox();
-            const ld = new THREE.Vector3(); o.geometry.boundingBox.getSize(ld);
-            const d = [ld.x, ld.y, ld.z].sort((a, b) => a - b);
-            if (!(d[1] > 0.65 * d[2] && d[0] < 0.6 * d[2])) return;
-            const b = new THREE.Box3().setFromObject(o);
-            const s = new THREE.Vector3(); b.getSize(s);
-            const ctr = new THREE.Vector3(); b.getCenter(ctr);
-            if (ctr.y < 0.3 * targetLen && Math.max(s.x, s.y, s.z) < 0.16 * targetLen) {
-              wheelBottom = Math.min(wheelBottom, b.min.y);
-            }
-          });
+          for (const r of wc) wheelBottom = Math.min(wheelBottom, r.c.y - r.maxD / 2);
           if (isFinite(wheelBottom)) {
             holder.position.y += -wheelBottom; // 將輪子降到 y=0
             this.aircraftGroup.updateMatrixWorld(true);
@@ -525,10 +520,30 @@ export class GameScene {
 
         this._setupNoseSteer(holder, targetLen);
         this._setupWheels(holder, targetLen);
+        this._setupProps(holder, targetLen);
       },
       undefined,
       (err) => console.warn('飛機模型載入失敗：', err)
     );
+  }
+
+  // 移除沿某軸被「大空隙」隔開的少數離群網格(分離標記/曲線/錯置零件)，避免撐大包圍盒導致縮放/置中錯誤。
+  _trimOutliers(holder, axis) {
+    const meshes = [];
+    holder.traverse((o) => { if (o.isMesh && o.geometry) meshes.push(o); });
+    if (meshes.length < 12) return;
+    const arr = meshes.map((o) => {
+      const c = new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3());
+      return { o, v: c[axis] };
+    }).sort((a, b) => a.v - b.v);
+    const range = arr[arr.length - 1].v - arr[0].v;
+    if (range <= 0) return;
+    let gi = -1, gmax = 0;
+    for (let i = 1; i < arr.length; i++) { const g = arr[i].v - arr[i - 1].v; if (g > gmax) { gmax = g; gi = i; } }
+    if (gmax < 0.18 * range) return; // 無顯著空隙 → 不動
+    const victims = gi <= arr.length - gi ? arr.slice(0, gi) : arr.slice(gi);
+    if (victims.length > 0.12 * arr.length) return; // 只清少數離群(避免誤砍機體大塊)
+    victims.forEach((x) => x.o.parent && x.o.parent.remove(x.o));
   }
 
   // 建立鼻輪轉向 pivot：轉向軸必須通過「鼻輪本身」的 (x,z)，否則轉動時會沿弧線飄離。
@@ -612,16 +627,19 @@ export class GameScene {
       const ws = new THREE.Vector3(); b.getSize(ws);
       const dims = [['x', ws.x], ['y', ws.y], ['z', ws.z]].sort((a, c) => a[1] - c[1]);
       const maxD = dims[2][1];
+      // 輪胎判定：兩大維接近(圓) + 一薄維(軸)且軸為水平(非 y)。引擎/螺旋槳靠「離地高度」與「離中心線」排除，
+      // 不靠薄軸方向(各模型輪子的 AABB 薄軸不一定落在橫向 X，例如 787 主輪薄軸為 Z)。
       if (!(maxD > 0 && dims[1][1] > 0.7 * maxD && dims[0][1] < 0.6 * maxD && dims[0][0] !== 'y')) return;
       if (maxD > 0.07 * targetLen || maxD < 0.004 * targetLen) return;
       const c = new THREE.Vector3(); b.getCenter(c);
-      // 起落架在機腹下方(機身座標 |x| 小)，排除翼上/引擎雜散圓盤
+      // 起落架在機腹下方(機身座標 |x| 小)，排除翼上引擎/雜散圓盤
       if (Math.abs(this.aircraftGroup.worldToLocal(c.clone()).x) > 0.16 * targetLen) return;
       cand.push({ mesh: o, c, maxD });
     });
     if (!cand.length) return [];
     const minY = Math.min(...cand.map((r) => r.c.y));
-    const band = Math.min(2.2, Math.max(0.8, 0.06 * targetLen)); // 底部高度帶(納入鼻輪+主輪，排除引擎扇/尾翼圓盤)
+    // 緊湊的底部高度帶：只納入「貼地的起落架」(鼻輪+主輪)，排除離地的引擎/螺旋槳/尾翼圓盤。
+    const band = Math.min(1.6, Math.max(0.6, 0.04 * targetLen));
     return cand.filter((r) => r.c.y < minY + band);
   }
 
@@ -650,6 +668,48 @@ export class GameScene {
       }
     } catch (e) {
       console.warn('輪子偵測失敗：', e);
+    }
+  }
+
+  // 偵測螺旋槳/引擎風扇並繞「機身縱向軸(面朝前)」自轉：圓盤 + 薄維=縱向 Z + 中大尺寸 + 離地(非起落架)。
+  // ATR72 螺旋槳、噴射引擎風扇都吃這條;與輪子(橫向軸、貼地)互斥,故不會亂轉錯零件。
+  _setupProps(holder, targetLen) {
+    this.props = [];
+    try {
+      holder.updateMatrixWorld(true);
+      const full = new THREE.Box3().setFromObject(holder);
+      const bottomY = full.min.y, height = (full.max.y - full.min.y) || 1;
+      const cand = [];
+      holder.traverse((o) => {
+        if (!o.isMesh || !o.geometry) return;
+        const b = new THREE.Box3().setFromObject(o);
+        const ws = new THREE.Vector3(); b.getSize(ws);
+        const dims = [['x', ws.x], ['y', ws.y], ['z', ws.z]].sort((a, c) => a[1] - c[1]);
+        const maxD = dims[2][1];
+        // 圓盤 + 薄維=縱向 Z(面朝前;機身座標已對齊世界)
+        if (!(maxD > 0 && dims[1][1] > 0.72 * maxD && dims[0][1] < 0.5 * maxD && dims[0][0] === 'z')) return;
+        if (maxD < 0.07 * targetLen || maxD > 0.26 * targetLen) return; // 風扇/槳葉尺寸(比輪子大)
+        const c = new THREE.Vector3(); b.getCenter(c);
+        if (c.y < bottomY + 0.15 * height) return; // 離地(排除輪子)
+        // 螺旋槳/引擎在機翼上(離中心線)，排除中線上的雷達罩/APU/機身圓盤等假陽性
+        if (Math.abs(this.aircraftGroup.worldToLocal(c.clone()).x) < 0.08 * targetLen) return;
+        cand.push({ mesh: o, c });
+      });
+      this.aircraftGroup.updateMatrixWorld(true);
+      const aq = new THREE.Quaternion(); this.aircraftGroup.getWorldQuaternion(aq);
+      const lonWorld = new THREE.Vector3(0, 0, 1).applyQuaternion(aq); // 機身縱向(前後)
+      for (const r of cand) {
+        const pivot = new THREE.Group();
+        pivot.position.copy(holder.worldToLocal(r.c.clone()));
+        holder.add(pivot);
+        pivot.updateMatrixWorld(true);
+        pivot.attach(r.mesh);
+        const pq = new THREE.Quaternion(); pivot.getWorldQuaternion(pq);
+        const axis = lonWorld.clone().applyQuaternion(pq.invert()).normalize(); // 縱向→pivot 局部(常數)
+        this.props.push({ pivot, axis });
+      }
+    } catch (e) {
+      console.warn('螺旋槳/風扇偵測失敗：', e);
     }
   }
 
@@ -955,6 +1015,12 @@ export class GameScene {
     // 用 rotateOnAxis(局部軸)而非 rotateOnWorldAxis：後者假設父層無旋轉，會把 777(yaw-90°)輪軸算成橫的。
     if (this.wheels && this.wheels.length && ac.speed > 0.001) {
       for (const w of this.wheels) w.pivot.rotateOnAxis(w.axle, -(ac.speed / 60) / w.radius);
+    }
+
+    // 螺旋槳/引擎風扇：繞機身縱向軸持續快速自轉(隨引擎轉速;關車 spool-down 變慢停)
+    if (this.props && this.props.length) {
+      const spin = (this.engineRPM ?? 0) * 0.85;
+      if (spin > 0.0005) for (const p of this.props) p.pivot.rotateOnAxis(p.axis, spin);
     }
 
     // 引擎轉速比例(供引擎聲)：運轉中=1，停妥關車後慢慢衰減到 0(spool-down)。

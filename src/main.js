@@ -56,8 +56,8 @@ $('btn-fpv').addEventListener('click', () => {
 });
 
 // ── 機型選擇（787 / 777 / A350 / 737 / A320 / ATR72）──
-// 引擎聲：廣體(777/A350)用 GE90 低沉雄厚，其餘窄體/區域機用 GEnx。
-const ENGINE_BY_TYPE = { B777: 'GE90', A350: 'GE90' };
+// 各機型不同引擎聲：787=GEnx、777=GE90、A350=Trent XWB、737MAX/A320=LEAP、ATR72=PW127 渦輪螺旋槳。
+const ENGINE_BY_TYPE = { B787: 'GEnx', B777: 'GE90', A350: 'TrentXWB', B737: 'LEAP', A320: 'LEAP', ATR72: 'PW127' };
 function selectModel(key, btn) {
   aircraft.setType(key);
   scene.loadAircraft(key);
