@@ -43,17 +43,16 @@ export function classifyPose(lm) {
   const shoulderW = Math.abs(ls.x - rs.x) || 0.18; // 防 0
 
   // image y 向下：值越小越「高」。指揮棒信號：大臂平舉、小臂在「平舉↔直舉」擺動。
-  const lwAboveHead = lw.y < nose.y;
-  const rwAboveHead = rw.y < nose.y;
   const up = (w) => w.y < shoulderY - shoulderW * 0.2;            // 小臂直舉→手腕明顯高於肩
   const down = (w) => w.y > shoulderY + shoulderW * 0.55;         // 雙手下伸（減速起手式）
   const lUp = up(lw), rUp = up(rw);
 
-  // ── STOP：雙手都過頭「且指揮棒交叉/靠攏」(雙手交叉立刻停) ──
-  // 一般站姿左手腕在影像右(x 較大)；交叉時對調(lw.x < rw.x)，或兩腕靠很近。
-  const wristGap = Math.abs(lw.x - rw.x);
-  const crossedOrClose = lw.x < rw.x + shoulderW * 0.1 || wristGap < shoulderW * 0.5;
-  if (lwAboveHead && rwAboveHead && crossedOrClose) {
+  // ── STOP：雙臂高舉過頭(雙腕明顯高於鼻) ──
+  // 註：MediaPipe 只給「手腕」位置，不是指揮棒頂端。玩家把雙臂高舉、兩支指揮棒在頭頂交叉時，
+  // 手腕本身常仍與肩同寬、不會交叉。故只要「雙腕都明顯過頭且未大字張開」即判停止(不強求手腕交叉)。
+  const overhead = lw.y < nose.y - shoulderW * 0.35 && rw.y < nose.y - shoulderW * 0.35;
+  const notSpread = Math.abs(lw.x - rw.x) < shoulderW * 1.3; // 收攏/交叉(X或V),排除大字平張
+  if (overhead && notSpread) {
     return { gesture: GESTURES.STOP, confidence: 0.95 };
   }
 
