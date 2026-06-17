@@ -31,8 +31,9 @@ export const AIRCRAFT_TYPES = {
   B737: { label: '737', maxSpeed: 11 * KNOT, idle: 5 * KNOT, standSpeed: 4 * KNOT, accel: 1.3, brake: 1.9, steerDeg: 45, wheelbase: 14, wingspan: 36 },
   // A320-200：長 37.6m、翼展 35.8m，窄體 → 軸距~13、鼻輪 45°、R≈13m。
   A320: { label: 'A320', maxSpeed: 11 * KNOT, idle: 5 * KNOT, standSpeed: 4 * KNOT, accel: 1.3, brake: 1.9, steerDeg: 45, wheelbase: 13, wingspan: 36 },
-  // ATR72-600：長 27.2m、翼展 27m，區域渦槳 → 軸距~10、鼻輪 50°、R≈8m，最靈活、整體較慢。
-  ATR72: { label: 'ATR72', maxSpeed: 8 * KNOT, idle: 4.5 * KNOT, standSpeed: 3.5 * KNOT, accel: 1.3, brake: 1.8, steerDeg: 50, wheelbase: 10, wingspan: 27 },
+  // ATR72-600：長 27.2m、翼展 27m，區域渦槳，整體較慢。原本鼻輪 50°/軸距 10(R≈8m)轉彎過於兇猛；
+  // 放寬為 40°/軸距 13(R≈15m，與 737/A320 相近)→ 慢速轉彎較柔和、好控制。
+  ATR72: { label: 'ATR72', maxSpeed: 8 * KNOT, idle: 4.5 * KNOT, standSpeed: 3.5 * KNOT, accel: 1.3, brake: 1.8, steerDeg: 40, wheelbase: 13, wingspan: 27 },
 };
 
 export class Aircraft {
