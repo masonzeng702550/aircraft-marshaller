@@ -126,8 +126,10 @@ export class GameScene {
     const NEAR_Z = B777_Z;                        // 中央線尾端(近端)對準 B777 停止線
     const straightLen = JUNCTION_Z - NEAR_Z;
     stripe(0.2, straightLen, 0, (NEAR_Z + JUNCTION_Z) / 2); // 中央線(含黑色細外框)
+    // 滑行道中間的直線：自銜接點(JUNCTION_Z)直通到滑行道中線(TAXIWAY_Z)，讓中央有一條連續直線。
+    stripe(0.2, TAXIWAY_Z - JUNCTION_Z, 0, (JUNCTION_Z + TAXIWAY_Z) / 2);
 
-    // 彎曲導入線（轉彎輔助線）：自滑行道兩側平滑彎入中心線，左右各一條（漏斗狀）。
+    // 彎曲導入線（轉彎輔助線）：自滑行道兩側平滑彎入中心線，左右各一條（漏斗狀）。貼地扁平、無高度。
     this._addLeadInCurve(-1, JUNCTION_Z, lineMat); // 左側進場用
     this._addLeadInCurve(+1, JUNCTION_Z, lineMat); // 右側進場用
 
@@ -362,24 +364,38 @@ export class GameScene {
 
   // 彎曲導入線：自滑行道(side*18, TAXIWAY_Z) 平滑彎入中心線(0, junctionZ)
   _addLeadInCurve(side, junctionZ, mat) {
-    const y = 0.012;
     const curve = new THREE.QuadraticBezierCurve3(
-      new THREE.Vector3(side * 28, y, TAXIWAY_Z), // 起點：滑行道上
-      new THREE.Vector3(0, y, TAXIWAY_Z),         // 控制點：使起點切線水平、終點切線垂直
-      new THREE.Vector3(0, y, junctionZ)          // 終點：銜接中心線
+      new THREE.Vector3(side * 28, 0, TAXIWAY_Z), // 起點：滑行道上
+      new THREE.Vector3(0, 0, TAXIWAY_Z),         // 控制點：使起點切線水平、終點切線垂直
+      new THREE.Vector3(0, 0, junctionZ)          // 終點：銜接中心線
     );
-    // 黑色細外框(較粗的黑管,貼地一點點低) + 黃色線(較細,在上)
-    const outline = new THREE.Mesh(
-      new THREE.TubeGeometry(curve, 28, 0.33, 8, false),
-      this._lineOutlineMat
-    );
-    outline.position.y = -0.001;
-    this.scene.add(outline);
-    const tube = new THREE.Mesh(
-      new THREE.TubeGeometry(curve, 28, 0.25, 8, false),
-      mat
-    );
-    this.scene.add(tube);
+    const pts = curve.getPoints(40);
+    // 沿曲線建「貼地扁平緞帶」(不是立體管子，無高度)：每點取切線法向、左右各推半寬。
+    const ribbon = (halfW, yy) => {
+      const pos = [], idx = [];
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+        const tx = b.x - a.x, tz = b.z - a.z, tl = Math.hypot(tx, tz) || 1;
+        const nx = -tz / tl, nz = tx / tl; // xz 平面上垂直於切線的方向
+        const p = pts[i];
+        pos.push(p.x + nx * halfW, yy, p.z + nz * halfW);
+        pos.push(p.x - nx * halfW, yy, p.z - nz * halfW);
+      }
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = i * 2, b = i * 2 + 1, c = i * 2 + 2, d = i * 2 + 3;
+        idx.push(a, b, c, b, d, c);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setIndex(idx); g.computeVertexNormals();
+      return g;
+    };
+    // 黑色細外框(貼地) + 黃色線(貼地，略高一點點)，與其他黃線同高、無立體高度。
+    // 用雙面材質，俯視/仰視都不會被背面剔除。
+    const outD = this._lineOutlineMat.clone(); outD.side = THREE.DoubleSide;
+    const matD = mat.clone(); matD.side = THREE.DoubleSide;
+    this.scene.add(new THREE.Mesh(ribbon(0.18, 0.011), outD));
+    this.scene.add(new THREE.Mesh(ribbon(0.1, 0.013), matD));
   }
 
   // 機位編號（畫在地面上的文字）
