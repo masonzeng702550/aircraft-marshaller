@@ -55,11 +55,7 @@ $('btn-fpv').addEventListener('click', () => {
   $('btn-tpv').classList.remove('active');
 });
 
-// ── 放大模式（點一下放大、再點還原）──
-$('btn-zoom').addEventListener('click', () => {
-  const on = scene.toggleZoom();
-  $('btn-zoom').classList.toggle('active', on);
-});
+// ── 放大模式：空白鍵切換（按一下放大、再按還原）──
 
 // ── 機型選擇（787 / 777 / A350 / 737 / A320 / ATR72）──
 // 各機型不同引擎聲：787=GEnx、777=GE90、A350=Trent XWB、737MAX/A320=LEAP、ATR72=PW127 渦輪螺旋槳。
@@ -85,6 +81,12 @@ const keyMap = {
   s: GESTURES.STOP, q: GESTURES.SLOW,
 };
 window.addEventListener('keydown', (e) => {
+  // 空白鍵：切換放大模式（避免同時捲動頁面；長按不重複切換）
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (!e.repeat) scene.setZoom(!scene.zoomed);
+    return;
+  }
   const g = keyMap[e.key.toLowerCase()];
   if (g) { keyboardGesture = g; useKeyboard = true; }
   if (e.key === 'r' || e.key === 'R') aircraft.reset();
