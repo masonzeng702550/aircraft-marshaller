@@ -491,12 +491,19 @@ export class GameScene {
     return g;
   }
 
-  // 依機型 key 載入對應 glTF 模型
+  // 依機型 key 載入對應 glTF 模型。已載入過的機型直接從快取即時套用（免重新下載/解碼/後處理）→ 切換不再卡頓。
   loadAircraft(key) {
     const m = AIRCRAFT_MODELS[key];
     if (m) {
       this.noseSteerMax = (m.steerDeg || 34) * Math.PI / 180; // 鼻輪最大轉向角
-      this.setAircraftModel(import.meta.env.BASE_URL + m.file, m.yaw, m.len, m.sceneryRatio);
+      this._activeModelKey = key;
+      this._modelCache = this._modelCache || {};
+      if (this._modelCache[key]) {
+        this._applyModel(this._modelCache[key]); // 命中快取 → 立即切換
+      } else {
+        this._ensureModelLoading(key, m);        // 尚未載入 → 開始載入，載好會自動套用（仍是作用機型時）
+      }
+      this._preloadModels();                     // 背景預載其餘機型，之後切換都是即時
     }
     // 該機型的鼻輪停止位置(主迴圈會寫入 aircraft.stopRefZ)：飛機停在自己的機型停止線上
     this.activeStopZ = (this.typeStopZ && this.typeStopZ[key] != null) ? this.typeStopZ[key] : STOP_LINE_Z;
@@ -506,8 +513,35 @@ export class GameScene {
     }
   }
 
-  // 載入 glTF 飛機模型，替換現有機體（去場景、旋轉定向、置中、貼地、縮放）。
-  setAircraftModel(url, yaw = 0, targetLen = 46, sceneryRatio = 0) {
+  // 背景預載所有機型到快取（不打擾目前顯示的機體）；每個只載一次。
+  _preloadModels() {
+    this._modelCache = this._modelCache || {};
+    for (const [key, m] of Object.entries(AIRCRAFT_MODELS)) this._ensureModelLoading(key, m);
+  }
+
+  // 若該機型尚未在快取、也不在載入中 → 開始載入。
+  _ensureModelLoading(key, m) {
+    this._modelCache = this._modelCache || {};
+    this._loadingKeys = this._loadingKeys || new Set();
+    if (this._modelCache[key] || this._loadingKeys.has(key)) return;
+    this._loadingKeys.add(key);
+    this.setAircraftModel(import.meta.env.BASE_URL + m.file, m.yaw, m.len, m.sceneryRatio, key);
+  }
+
+  // 把快取的機型（含機體與轉向/滾輪/螺旋槳等節點參照）即時掛回場景。
+  _applyModel(entry) {
+    while (this.aircraftGroup.children.length) this.aircraftGroup.remove(this.aircraftGroup.children[0]);
+    this.aircraftGroup.add(entry.holder);
+    this.aircraftGroup.rotation.set(0, 0, 0);
+    this.aircraftGroup.updateMatrixWorld(true);
+    this.noseGear = entry.noseGear;
+    this.noseGearOffset = entry.noseGearOffset;
+    this.wheels = entry.wheels;
+    this.props = entry.props;
+  }
+
+  // 載入 glTF 飛機模型，替換現有機體（去場景、旋轉定向、置中、貼地、縮放）。載好後存入快取。
+  setAircraftModel(url, yaw = 0, targetLen = 46, sceneryRatio = 0, key = null) {
     const loader = new GLTFLoader();
     if (!GameScene._draco) {
       GameScene._draco = new DRACOLoader();
@@ -603,9 +637,26 @@ export class GameScene {
         this._setupNoseSteer(holder, targetLen);
         this._setupWheels(holder, targetLen);
         this._setupProps(holder, targetLen);
+
+        // 存入快取（連同轉向/滾輪/螺旋槳節點參照），日後切換此機型即時套用、免重新處理。
+        if (key) {
+          this._modelCache = this._modelCache || {};
+          this._modelCache[key] = {
+            holder,
+            noseGear: this.noseGear,
+            noseGearOffset: this.noseGearOffset,
+            wheels: this.wheels,
+            props: this.props,
+          };
+          this._loadingKeys && this._loadingKeys.delete(key);
+          // 此次處理是把 holder 掛在 aircraftGroup 上完成的；若它不是目前作用中的機型（背景預載），
+          // 立即把作用中的機型換回，避免預載的機體覆蓋畫面。整段同步執行，主迴圈不會讀到中間狀態。
+          const active = this._modelCache[this._activeModelKey];
+          if (active) this._applyModel(active);
+        }
       },
       undefined,
-      (err) => console.warn('飛機模型載入失敗：', err)
+      (err) => { this._loadingKeys && key && this._loadingKeys.delete(key); console.warn('飛機模型載入失敗：', err); }
     );
   }
 
