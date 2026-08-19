@@ -68,6 +68,16 @@ export class GameScene {
     this.camera = view === 'FPV' ? this.fpv : this.tpv;
   }
 
+  // 放大模式：單純縮小視野角(FOV)做望遠鏡式畫面放大，視點方向不變、畫面清晰。
+  setZoom(on) {
+    this.zoomed = !!on;
+    this.tpv.fov = this.zoomed ? 36 : 74;
+    this.fpv.fov = this.zoomed ? 40 : 76;
+    this.tpv.updateProjectionMatrix();
+    this.fpv.updateProjectionMatrix();
+  }
+  toggleZoom() { this.setZoom(!this.zoomed); return this.zoomed; }
+
   _buildLights() {
     // 白天：明亮天空光 + 太陽平行光
     this.scene.add(new THREE.HemisphereLight(0xdff0ff, 0x6b7a66, 1.1));
