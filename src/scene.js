@@ -14,7 +14,7 @@ export const AIRCRAFT_MODELS = {
   // steerDeg：鼻輪最大轉向角(度)。
   B787: { file: 'models/787/787.glb', yaw: Math.PI, len: 46, sceneryRatio: 0.45, steerDeg: 70, type: 'B787', label: '787' },
   B777: { file: 'models/777/777.glb', yaw: -Math.PI / 2, len: 52, sceneryRatio: 0, steerDeg: 75, type: 'B777', label: '777' },
-  A350: { file: 'models/a350/a350.glb', yaw: -Math.PI / 2, len: 54, sceneryRatio: 0, steerDeg: 40, type: 'A350', label: 'A350' },
+  A350: { file: 'models/a350/a350.glb', yaw: -Math.PI / 2, len: 54, sceneryRatio: 0, steerDeg: 40, type: 'A350', label: 'A350', yLift: 0.6 }, // 略抬高避免半顆輪子陷入地面
   B737: { file: 'models/b737/b737.glb', yaw: -Math.PI / 2, len: 29, sceneryRatio: 0, steerDeg: 45, type: 'B737', label: '737' },
   A320: { file: 'models/a320/a320.glb', yaw: -Math.PI / 2, len: 27, sceneryRatio: 0, steerDeg: 45, type: 'A320', label: 'A320' },
   ATR72: { file: 'models/atr72/atr72.glb', yaw: Math.PI / 2, len: 20, sceneryRatio: 0, steerDeg: 50, type: 'ATR72', label: 'ATR72' },
@@ -633,6 +633,10 @@ export class GameScene {
             this.aircraftGroup.updateMatrixWorld(true);
           }
         } catch (e) { console.warn('貼地精修失敗：', e); }
+
+        // 各機型微調高度(yLift)：修正個別模型輪子略陷入地面/略浮空(例如 A350 半顆輪在地下)。
+        const yLift = (key && AIRCRAFT_MODELS[key] && AIRCRAFT_MODELS[key].yLift) || 0;
+        if (yLift) { holder.position.y += yLift; this.aircraftGroup.updateMatrixWorld(true); }
 
         this._setupNoseSteer(holder, targetLen);
         this._setupWheels(holder, targetLen);
