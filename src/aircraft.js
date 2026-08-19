@@ -57,6 +57,7 @@ export class Aircraft {
     // 從左端(x<0)機頭朝 +X(heading=-90°)、從右端朝 -X(heading=+90°)，即與中心線垂直、朝中心線。
     this.heading = side * (Math.PI / 2);
     this.steerAngle = 0; // 鼻輪當前打角(rad)，平滑趨近目標
+    this._turnHoldTime = 0; this._turnHoldDir = null; // 大型機長按轉彎加大弧度用
     this.pitch = 0;      // 機身俯仰(剎車前傾)，負=機鼻向下
     this.pitchVel = 0;
     this._prevSpeed = 0;
@@ -85,7 +86,22 @@ export class Aircraft {
   // dt：秒
   update(dt) {
     const s = this.spec;
-    const steerMax = (s.steerDeg || 34) * Math.PI / 180;
+    const steerMaxBase = (s.steerDeg || 34) * Math.PI / 180;
+    // 大型機(787/777/A350)迴轉半徑大、慢；同方向轉彎持續超過 3 秒 → 鼻輪打角漸增(轉彎弧度增大，轉得更緊)，
+    // 幫助完成大角度轉向；一旦換向或放開該方向轉彎指令，計時歸零、立即回到原本的轉彎弧度。
+    const isTurnCmd = this.command === GESTURES.TURN_LEFT || this.command === GESTURES.TURN_RIGHT;
+    if (isTurnCmd && this.command === this._turnHoldDir) {
+      this._turnHoldTime = (this._turnHoldTime || 0) + dt;
+    } else {
+      this._turnHoldDir = isTurnCmd ? this.command : null;
+      this._turnHoldTime = 0;
+    }
+    const bigTurner = this.typeKey === 'B787' || this.typeKey === 'B777' || this.typeKey === 'A350';
+    let steerBoost = 1;
+    if (bigTurner && this._turnHoldTime > 3) {
+      steerBoost = 1 + Math.min(1, (this._turnHoldTime - 3) / 2) * 0.7; // 3s 後 2 秒內由 1.0 漸增到 1.7
+    }
+    const steerMax = steerMaxBase * steerBoost;
     if (!this.stopped) {
     let targetSpeed = s.idle; // 預設自動滑行（一直在動）
     let turning = false;
