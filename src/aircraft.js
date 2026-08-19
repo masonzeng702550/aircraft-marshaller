@@ -58,6 +58,7 @@ export class Aircraft {
     this.heading = side * (Math.PI / 2);
     this.steerAngle = 0; // 鼻輪當前打角(rad)，平滑趨近目標
     this._turnHoldTime = 0; this._turnHoldDir = null; // 大型機長按轉彎加大弧度用
+    this._returning = false; this._returnRate = 0;    // 大型機大角度轉彎緩慢回正用
     this.pitch = 0;      // 機身俯仰(剎車前傾)，負=機鼻向下
     this.pitchVel = 0;
     this._prevSpeed = 0;
@@ -158,8 +159,20 @@ export class Aircraft {
       this.speed = Math.max(targetSpeed, this.speed - decel * dt);
     }
 
-    // 鼻輪打角「緩慢」趨近目標(時間常數~0.4s)：轉向有慣性、緩緩切入/退出 → 平滑圓弧、不會瞬間反應
-    this.steerAngle += (steerTarget - this.steerAngle) * Math.min(1, dt * 2.5);
+    // 鼻輪打角「緩慢」趨近目標(時間常數~0.4s)：轉向有慣性、緩緩切入/退出 → 平滑圓弧、不會瞬間反應。
+    // 但大型機(787/777/A350)自「大角度轉彎」回正時，若用一般速率會瞬間彈回；改為以固定角速度線性回正，
+    // 讓轉彎弧度「慢慢變小到消失」，約 2 秒才回到直行(回正開始時記錄角度→角速度=角度/2)。
+    const returning = Math.abs(steerTarget) < Math.abs(this.steerAngle) - 1e-4;
+    if (bigTurner && returning && (this._returning || Math.abs(this.steerAngle) > 0.25)) {
+      if (!this._returning) { this._returning = true; this._returnRate = Math.abs(this.steerAngle) / 2; }
+      const step = this._returnRate * dt;
+      this.steerAngle = this.steerAngle > 0
+        ? Math.max(steerTarget, this.steerAngle - step)
+        : Math.min(steerTarget, this.steerAngle + step);
+    } else {
+      this._returning = false;
+      this.steerAngle += (steerTarget - this.steerAngle) * Math.min(1, dt * 2.5);
+    }
     // 自行車模型：航向變化率 = 地速 · tan(鼻輪角) / 軸距。
     // 路徑曲率由鼻輪角決定 → 視覺鼻輪角與實際轉彎一致(不再像定速旋轉的「飄移」)。
     this.heading += this.speed * Math.tan(this.steerAngle) / s.wheelbase * dt;
