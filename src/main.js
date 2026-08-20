@@ -27,8 +27,8 @@ const aircraft = new Aircraft('B787'); // 預設 787
 const gate = new StableGate(280);
 const engineAudio = new EngineAudio();
 
-// 分頁切到背景/離開頁面/視窗失焦時停止引擎聲，回到前景再恢復（避免背景持續嗡嗡發聲）。
-const audioShouldPlay = () => document.hasFocus() && !document.hidden;
+// 分頁切到背景/離開頁面/視窗失焦時停止引擎聲，回到前景再恢復（避免背景持續嗡嗡發聲）。暫停時也靜音。
+const audioShouldPlay = () => document.hasFocus() && !document.hidden && !paused;
 document.addEventListener('visibilitychange', () => engineAudio.setActive(audioShouldPlay()));
 window.addEventListener('pagehide', () => engineAudio.setActive(false));
 window.addEventListener('blur', () => engineAudio.setActive(false));
@@ -41,6 +41,7 @@ let tracker = null;
 let useKeyboard = false;
 let keyboardGesture = GESTURES.NONE;
 let running = false;
+let paused = false;
 let lastT = performance.now();
 
 // ── 視角切換 ──
@@ -87,10 +88,22 @@ window.addEventListener('keydown', (e) => {
     if (!e.repeat) scene.setZoom(!scene.zoomed);
     return;
   }
+  // P：暫停 / 繼續（僅在遊戲已開始後有效）
+  if (e.key === 'p' || e.key === 'P') {
+    if (running) setPaused(!paused);
+    return;
+  }
   const g = keyMap[e.key.toLowerCase()];
   if (g) { keyboardGesture = g; useKeyboard = true; }
   if (e.key === 'r' || e.key === 'R') aircraft.reset();
 });
+
+function setPaused(on) {
+  paused = on;
+  engineAudio.setActive(audioShouldPlay());   // 暫停立即靜音、繼續恢復
+  const el = $('pause-overlay');
+  if (el) el.style.display = paused ? 'flex' : 'none';
+}
 window.addEventListener('keyup', (e) => {
   const g = keyMap[e.key.toLowerCase()];
   if (g && keyboardGesture === g) keyboardGesture = GESTURES.NONE;
@@ -131,6 +144,8 @@ $('btn-start').addEventListener('click', async () => {
 
 function loop(now) {
   if (!running) return;
+  // 暫停：凍結模擬(不更新物理、畫面停格)，但持續 rAF 以便隨時繼續；lastT 同步避免繼續時 dt 暴衝。
+  if (paused) { lastT = now; requestAnimationFrame(loop); return; }
   const dt = Math.min(0.05, (now - lastT) / 1000);
   lastT = now;
 

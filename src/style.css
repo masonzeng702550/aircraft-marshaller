@@ -46,6 +46,13 @@ html, body { height: 100%; background: var(--bg); color: var(--text);
   padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; }
 #view-toggle button.active { color: var(--text); border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 
+#pause-overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+  background: rgba(6, 10, 14, 0.5); backdrop-filter: blur(2px); z-index: 30; }
+.pause-card { text-align: center; color: var(--text); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 14px; padding: 28px 44px; }
+.pause-title { font-size: 34px; font-weight: 700; letter-spacing: 2px; }
+.pause-sub { margin-top: 8px; color: var(--muted); font-size: 15px; }
+
 #model-toggle { position: absolute; right: 16px; top: 60px; display: flex; gap: 6px; }
 #model-toggle button { background: var(--panel); color: var(--muted); border: 1px solid var(--line);
   padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; }
