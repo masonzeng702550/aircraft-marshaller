@@ -501,9 +501,9 @@ export class GameScene {
       if (this._modelCache[key]) {
         this._applyModel(this._modelCache[key]); // 命中快取 → 立即切換
       } else {
-        this._ensureModelLoading(key, m);        // 尚未載入 → 開始載入，載好會自動套用（仍是作用機型時）
+        this._ensureModelLoading(key, m);        // 尚未載入 → 只載這一台（不搶頻寬），載好會自動套用
       }
-      this._preloadModels();                     // 背景預載其餘機型，之後切換都是即時
+      this._preloadNext();                        // 若背景預載已啟動，接續載下一台（循序、一次一台）
     }
     // 該機型的鼻輪停止位置(主迴圈會寫入 aircraft.stopRefZ)：飛機停在自己的機型停止線上
     this.activeStopZ = (this.typeStopZ && this.typeStopZ[key] != null) ? this.typeStopZ[key] : STOP_LINE_Z;
@@ -513,10 +513,15 @@ export class GameScene {
     }
   }
 
-  // 背景預載所有機型到快取（不打擾目前顯示的機體）；每個只載一次。
-  _preloadModels() {
+  // 背景「循序」預載：一次只載一台，避免與畫面上正在顯示的模型搶頻寬（否則初次載入會很慢、久久停在預設機體）。
+  // 由「作用中的機型載好後」才啟動（_preloadStarted），並在每台載完後接續呼叫，串起整條預載鏈。
+  _preloadNext() {
+    if (!this._preloadStarted) return;
     this._modelCache = this._modelCache || {};
-    for (const [key, m] of Object.entries(AIRCRAFT_MODELS)) this._ensureModelLoading(key, m);
+    this._loadingKeys = this._loadingKeys || new Set();
+    for (const [key, m] of Object.entries(AIRCRAFT_MODELS)) {
+      if (!this._modelCache[key] && !this._loadingKeys.has(key)) { this._ensureModelLoading(key, m); return; }
+    }
   }
 
   // 若該機型尚未在快取、也不在載入中 → 開始載入。
@@ -657,10 +662,17 @@ export class GameScene {
           // 立即把作用中的機型換回，避免預載的機體覆蓋畫面。整段同步執行，主迴圈不會讀到中間狀態。
           const active = this._modelCache[this._activeModelKey];
           if (active) this._applyModel(active);
+          // 第一台（通常是預設機型）載好、畫面已顯示後，才開始「循序」背景預載其餘機型；並串起下一台。
+          this._preloadStarted = true;
+          this._preloadNext();
         }
       },
       undefined,
-      (err) => { this._loadingKeys && key && this._loadingKeys.delete(key); console.warn('飛機模型載入失敗：', err); }
+      (err) => {
+        this._loadingKeys && key && this._loadingKeys.delete(key);
+        console.warn('飛機模型載入失敗：', err);
+        this._preloadNext(); // 某台失敗也要接續預載其餘機型，別讓整條鏈斷掉
+      }
     );
   }
 
